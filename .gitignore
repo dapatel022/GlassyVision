@@ -41,6 +41,9 @@ yarn-error.log*
 *.rx.png
 *.rx.pdf
 
+# brainstorming visual companion state/mockups
+.superpowers/
+
 # vercel
 .vercel
 
