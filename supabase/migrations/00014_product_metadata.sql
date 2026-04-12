@@ -1,0 +1,20 @@
+create table product_metadata (
+  id uuid primary key default gen_random_uuid(),
+  shopify_product_id bigint not null,
+  shopify_variant_id bigint not null,
+  sku text not null,
+  frame_shape text,
+  frame_material text,
+  frame_eye_size numeric(5,1),
+  frame_bridge numeric(5,1),
+  frame_temple_length numeric(5,1),
+  frame_total_width numeric(5,1),
+  frame_weight_g numeric(5,1),
+  base_curve numeric(4,2),
+  lens_compatibility jsonb default '[]'::jsonb,
+  is_rx_capable boolean not null default false,
+  is_rx_sunglass_capable boolean not null default false,
+  max_prescription_power numeric(4,1),
+  last_synced_at timestamptz not null default now(),
+  unique (shopify_product_id, shopify_variant_id)
+);
