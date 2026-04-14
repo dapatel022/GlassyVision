@@ -1,6 +1,8 @@
 import { redirect } from 'next/navigation';
 import { getCurrentUser, isLabRole } from '@/lib/auth/middleware';
 
+export const dynamic = 'force-dynamic';
+
 export default async function LabLayout({
   children,
 }: {

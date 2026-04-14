@@ -14,7 +14,7 @@ interface SelectionStepProps {
     description?: string;
     options: Option[];
     selectedId: string | null;
-    onSelect: (id: any) => void;
+    onSelect: (id: string) => void;
     onNext: () => void;
 }
 

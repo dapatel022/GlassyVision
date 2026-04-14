@@ -41,7 +41,7 @@ export default function Reviews() {
                                     />
                                 ))}
                             </div>
-                            <p className="text-gray-700 mb-8 italic text-lg leading-relaxed">"{review.text}"</p>
+                            <p className="text-gray-700 mb-8 italic text-lg leading-relaxed">&ldquo;{review.text}&rdquo;</p>
                             <div className="flex justify-between items-center pt-6 border-t border-gray-100">
                                 <div className="flex items-center gap-3">
                                     <div className="w-10 h-10 rounded-full bg-gradient-to-br from-accent to-purple-500 flex items-center justify-center text-white font-bold">

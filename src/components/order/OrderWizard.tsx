@@ -1,4 +1,4 @@
-import { useOrder } from '@/context/OrderContext';
+import { useOrder, type FrameType, type LensType, type LensOption, type Material } from '@/context/OrderContext';
 import SelectionStep from './SelectionStep';
 import PrescriptionForm from './PrescriptionForm';
 
@@ -17,7 +17,7 @@ export default function OrderWizard() {
                             { id: 'Rimless', label: 'Rimless', description: 'Lenses are mounted directly to temples and bridge.' },
                         ]}
                         selectedId={state.frameType}
-                        onSelect={setFrameType}
+                        onSelect={(id) => setFrameType(id as FrameType)}
                         onNext={nextStep}
                     />
                 );
@@ -32,7 +32,7 @@ export default function OrderWizard() {
                             { id: 'Non-Prescription', label: 'Non-Prescription', description: 'Fashion or protection only.', price: 77 },
                         ]}
                         selectedId={state.lensType}
-                        onSelect={setLensType}
+                        onSelect={(id) => setLensType(id as LensType)}
                         onNext={nextStep}
                     />
                 );
@@ -47,7 +47,7 @@ export default function OrderWizard() {
                             { id: 'Sunglasses', label: 'Sunglasses', description: 'Tinted or polarized lenses.', price: 40 },
                         ]}
                         selectedId={state.lensOption}
-                        onSelect={setLensOption}
+                        onSelect={(id) => setLensOption(id as LensOption)}
                         onNext={nextStep}
                     />
                 );
@@ -62,7 +62,7 @@ export default function OrderWizard() {
                             { id: 'High Index 1.74', label: 'High Index 1.74', description: 'Thinnest and lightest available.', price: 80 },
                         ]}
                         selectedId={state.material}
-                        onSelect={setMaterial}
+                        onSelect={(id) => setMaterial(id as Material)}
                         onNext={nextStep}
                     />
                 );

@@ -1,6 +1,8 @@
 import { redirect } from 'next/navigation';
 import { getCurrentUser, isAdminRole } from '@/lib/auth/middleware';
 
+export const dynamic = 'force-dynamic';
+
 export default async function AdminLayout({
   children,
 }: {
