@@ -9,10 +9,14 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Check for auth cookie (Supabase stores JWT in cookies)
-  const accessToken = request.cookies.get('sb-access-token')?.value;
+  // Supabase SSR stores the session in cookies named `sb-<project-ref>-auth-token`
+  // (optionally split into `.0`/`.1` chunks for large tokens). Presence-check
+  // only — the real role check runs in the page via getCurrentUser.
+  const hasSupabaseSession = request.cookies
+    .getAll()
+    .some((c) => c.name.startsWith('sb-') && c.name.includes('-auth-token'));
 
-  if (!accessToken) {
+  if (!hasSupabaseSession) {
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('redirect', pathname);
     return NextResponse.redirect(loginUrl);

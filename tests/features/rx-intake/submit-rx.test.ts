@@ -117,7 +117,7 @@ describe('submitRx', () => {
 
     expect(result.success).toBe(true);
     expect(mockInsert).toHaveBeenCalledTimes(1);
-    const insertArg = mockInsert.mock.calls[0][0] as Record<string, unknown>;
+    const insertArg = (mockInsert.mock.calls as unknown as Array<[Record<string, unknown>]>)[0][0];
     expect(insertArg.customer_email).toBe('alex@example.com');
     expect(insertArg.uploaded_by_ip).toBe('203.0.113.42');
     expect(insertArg.uploaded_by_user_agent).toBe('Mozilla/5.0 (test)');

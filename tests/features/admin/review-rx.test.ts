@@ -100,7 +100,7 @@ describe('reviewRx', () => {
 
     expect(result.success).toBe(true);
     expect(rxFileUpdate).toHaveBeenCalledTimes(1);
-    const patch = rxFileUpdate.mock.calls[0][0] as { deleted_at: string };
+    const patch = (rxFileUpdate.mock.calls as unknown as Array<[{ deleted_at: string }]>)[0][0];
     expect(patch.deleted_at).toBeTruthy();
   });
 
