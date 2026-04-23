@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin';
+import AcceptInviteForm from '@/features/invitations/components/AcceptInviteForm';
 
 export const dynamic = 'force-dynamic';
 
@@ -58,21 +59,7 @@ export default async function InviteAcceptPage({ params }: PageProps) {
           You&apos;re invited to GlassyVision
         </h1>
 
-        <dl className="text-sm space-y-2 mb-6">
-          <div className="flex justify-between"><dt className="text-muted">Email</dt><dd className="font-mono">{invitation.email}</dd></div>
-          <div className="flex justify-between"><dt className="text-muted">Role</dt><dd className="font-mono">{invitation.role}</dd></div>
-          <div className="flex justify-between"><dt className="text-muted">Expires</dt><dd className="font-mono">{new Date(invitation.expires_at).toLocaleDateString()}</dd></div>
-        </dl>
-
-        <div className="p-3 bg-base-deeper border border-line rounded-lg text-sm text-muted">
-          <p className="mb-2">
-            <strong>Account setup is coming in Week 5.</strong>
-          </p>
-          <p>
-            Your invite is valid. An admin will complete your account setup manually for now.
-            Ping hello@glassyvision.com with this link.
-          </p>
-        </div>
+        <AcceptInviteForm token={token} email={invitation.email} role={invitation.role} />
       </div>
     </div>
   );
