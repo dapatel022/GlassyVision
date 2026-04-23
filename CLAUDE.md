@@ -14,23 +14,26 @@ This file is load-bearing. Read it at the start of every session. Update it when
 
 ## Architecture (locked)
 
-**Hybrid: Shopify storefront + custom Next.js ops backend.**
+**Headless: one Next.js app, Shopify as commerce API black box.** Per `docs/superpowers/specs/2026-04-11-glassyvision-phase1-design.md` §2 (Approach 2 — Headless).
+
+- **Shopify owns money:** checkout, payments, tax, fraud, refunds, financial records. Customer only sees Shopify during the ~60-second payment page detour.
+- **Supabase owns operations:** Rx files, review state, work orders, lab jobs, inventory pools, audit logs.
+- **Next.js owns every pixel:** home, shop, PDP, cart, brand/editorial pages, `/rx/*`, `/admin/*`, `/lab/*`, `/account/*`. All hosted at `glassyvision.com` on Vercel.
 
 | Concern | Where it lives |
 |---|---|
-| Storefront (browse, cart, checkout, payments, tax, shipping rates, marketing, customer accounts, transactional email) | **Shopify Basic** on `glassyvision.com` |
-| Rx intake (post-checkout, customer uploads Rx image + optional typed values) | **Next.js app** (this repo) at `/rx/[orderId]` |
-| Admin dashboard (Rx review queue, work-order generation, order ops) | **Next.js app** at `/admin` |
-| Lab dashboard (job queue for India team, status updates, QC photos) | **Next.js app** at `/lab` |
-| Shopify → us integration | Webhook handlers at `/api/shopify/webhooks/*` |
-| DB | **Supabase** (Postgres + auth + object storage for Rx files) |
+| Storefront UI (home, shop, PDP, cart, brand pages) | **Next.js** at `glassyvision.com` (consumes Shopify Storefront API) |
+| Checkout, payments, tax, fraud, refunds | **Shopify Basic** (invoked via `checkoutUrl` redirect) |
+| Rx intake, admin review, lab dashboard, account pages | **Next.js app** (this repo) |
+| Shopify ↔ us integration | Storefront API (GraphQL) + Admin API + webhooks at `/api/shopify/webhooks/*` |
+| DB, auth, Rx file storage | **Supabase** (Postgres + Auth + Storage) |
 | Hosting | **Vercel** (Next.js) |
 | Error monitoring | **Sentry** |
-| Shopify tier | Basic ($39) → Advanced → Plus → headless Hydrogen later |
+| Shopify tier | Basic ($39) |
 
-**Customer journey:** Shopify storefront → checkout → thank-you page redirects to `glassyvision.com/rx/ORDER-ID` → customer uploads Rx → admin reviews → work order generated → lab fulfills → ship → Shopify order updated.
+**Customer journey:** browse `glassyvision.com` (Next.js reads catalog via Shopify Storefront API) → cart is client-side state in Next.js → `/checkout` route calls Shopify `cartCreate` → redirect to Shopify `checkoutUrl` → customer pays → returns to `/thanks/[orderId]` (Next.js) → `/rx/[orderId]?token=...` → admin reviews → lab fulfills → ship → Shopify order updated via Admin API.
 
-**Do not rebuild in Next.js anything Shopify already does well.** If you find yourself writing cart logic, checkout, or payment code here, stop and use Shopify.
+**Shopify lock-in posture: moderate, by design.** All Shopify calls go through `src/lib/commerce/shopify.ts` — one file to replace if we ever swap commerce backends. All data mirrored into Supabase. No Shopify themes, no Shopify apps, no Shopify scripts.
 
 ## Tech stack (this repo)
 
@@ -74,7 +77,7 @@ These rules are not negotiable. We decided them explicitly — see `docs/superpo
 - **Don't accept typed-only prescriptions.** Image upload is required.
 - **Don't call doctors or build "we verify your Rx" flows.** User explicitly decided against verification partners.
 - **Don't add features beyond the current spec.** No speculative functionality. YAGNI hard.
-- **Don't rebuild checkout, cart, or payments in Next.js.** That's Shopify's job.
+- **Don't rebuild Shopify's money path.** Checkout (final step), payments, tax calc, fraud, refunds stay on Shopify. Cart state (pre-checkout) lives in Next.js as localStorage + context; we hand it to Shopify via `cartCreate`/`cartLinesAdd` at checkout handoff.
 - **Don't use `--no-verify` on commits** unless the user explicitly says so.
 - **Don't delete or overwrite uncommitted work** without confirming with the user.
 - **Don't skip external code review** after a feature is implemented.

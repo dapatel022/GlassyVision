@@ -7,3 +7,4 @@ process.env.SHOPIFY_STOREFRONT_ACCESS_TOKEN = 'test-storefront-token';
 process.env.SHOPIFY_ADMIN_ACCESS_TOKEN = 'test-admin-token';
 process.env.SHOPIFY_WEBHOOK_SECRET = 'test-webhook-secret';
 process.env.RESEND_API_KEY = 'test-resend-key';
+process.env.RX_TOKEN_SECRET = 'test-rx-token-secret-at-least-32-chars-long-for-hmac';

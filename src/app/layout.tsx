@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Inter_Tight, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
+import { CartProvider } from '@/context/CartContext';
 
 const interTight = Inter_Tight({
   subsets: ['latin'],
@@ -50,7 +51,7 @@ export default function RootLayout({
       <body
         className={`${interTight.variable} ${jetbrainsMono.variable} antialiased bg-base text-ink`}
       >
-        {children}
+        <CartProvider>{children}</CartProvider>
       </body>
     </html>
   );
