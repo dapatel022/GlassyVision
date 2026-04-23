@@ -25,15 +25,19 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
+    let next: CartLine[] = [];
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as CartLine[];
-        if (Array.isArray(parsed)) setLines(parsed);
+        if (Array.isArray(parsed)) next = parsed;
       }
     } catch {
       // corrupt cart — start fresh
     }
+    // One-time hydration from external source (localStorage) on mount.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLines(next);
     setHydrated(true);
   }, []);
 
