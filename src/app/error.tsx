@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { captureException } from '@/lib/observability/sentry';
 
 export default function GlobalError({
   error,
@@ -10,8 +11,7 @@ export default function GlobalError({
   reset: () => void;
 }) {
   useEffect(() => {
-    // TODO: wire to Sentry once configured
-    console.error('Global error boundary:', error);
+    captureException(error, { boundary: 'global-error' });
   }, [error]);
 
   return (

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { moveJob } from '../actions/move-job';
+import { addQcPhoto } from '../actions/add-qc-photo';
 import { type KanbanJob, COLUMN_LABELS, COLUMNS_ORDER } from './types';
 
 interface Props {
@@ -15,6 +16,37 @@ export default function JobDetailModal({ job, onClose }: Props) {
   const [target, setTarget] = useState(job.column);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadCount, setUploadCount] = useState(job.qcPhotoCount);
+
+  async function handleQcUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const urlRes = await fetch('/api/lab/qc-upload-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobId: job.id, filename: file.name, mimeType: file.type || 'image/jpeg' }),
+      });
+      if (!urlRes.ok) throw new Error('Failed to sign upload');
+      const { signedUrl, storagePath } = await urlRes.json();
+      const putRes = await fetch(signedUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': file.type || 'image/jpeg', 'x-upsert': 'true' },
+        body: file,
+      });
+      if (!putRes.ok) throw new Error('Upload failed');
+      const save = await addQcPhoto(job.id, storagePath);
+      if (save.success) setUploadCount((n) => n + 1);
+      else throw new Error(save.error ?? 'Save failed');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setUploading(false);
+      if (e.target) e.target.value = '';
+    }
+  }
 
   async function handleMove() {
     if (target === job.column) {
@@ -68,7 +100,18 @@ export default function JobDetailModal({ job, onClose }: Props) {
 
           <div>
             <p className="text-xs font-sans font-bold uppercase tracking-wider text-muted-soft mb-1">QC photos</p>
-            <p className="text-sm font-mono">{job.qcPhotoCount} uploaded</p>
+            <p className="text-sm font-mono mb-2">{uploadCount} uploaded</p>
+            <label className="inline-flex items-center gap-2 px-3 py-2 border border-line rounded-lg text-xs font-sans font-bold uppercase tracking-wider cursor-pointer hover:bg-base-deeper">
+              {uploading ? 'Uploading…' : '+ Add photo'}
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/heic,image/heif"
+                capture="environment"
+                className="hidden"
+                onChange={handleQcUpload}
+                disabled={uploading}
+              />
+            </label>
           </div>
 
           {error && (
