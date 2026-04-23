@@ -1,6 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 import { verifyRxToken, parseRxTokenParams } from '@/features/rx-intake/lib/rx-token';
-import { cookies } from 'next/headers';
 import RxIntakeWizard from '@/features/rx-intake/components/RxIntakeWizard';
 import RxStatusDisplay from '@/features/rx-intake/components/RxStatusDisplay';
 import RxOrderPending from '@/features/rx-intake/components/RxOrderPending';
@@ -21,25 +20,9 @@ export default async function RxIntakePage({ params, searchParams }: PageProps) 
   if (typeof search.exp === 'string') urlParams.set('exp', search.exp);
 
   const tokenParams = parseRxTokenParams(urlParams);
-  const cookieStore = await cookies();
-  const existingSession = cookieStore.get('rx_session')?.value;
-
-  let isAuthenticated = false;
-
-  if (tokenParams) {
-    if (verifyRxToken(orderId, tokenParams.token, tokenParams.exp)) {
-      isAuthenticated = true;
-      cookieStore.set('rx_session', orderId, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 24 * 60 * 60,
-        path: `/rx/${orderId}`,
-      });
-    }
-  } else if (existingSession === orderId) {
-    isAuthenticated = true;
-  }
+  const isAuthenticated = tokenParams
+    ? verifyRxToken(orderId, tokenParams.token, tokenParams.exp)
+    : false;
 
   if (!isAuthenticated) {
     return (
