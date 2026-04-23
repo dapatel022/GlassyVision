@@ -1,5 +1,6 @@
 'use server';
 
+import { headers } from 'next/headers';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createHash } from 'crypto';
 import type { Json } from '@/lib/supabase/types';
@@ -13,8 +14,6 @@ export interface SubmitRxInput {
   certificationChecked: boolean;
   typedValues: RxTypedValues | null;
   expirationDate: string | null;
-  ip: string;
-  userAgent: string;
 }
 
 export interface SubmitRxResult {
@@ -22,6 +21,12 @@ export interface SubmitRxResult {
   rxFileId?: string;
   errors?: AutoCheckResult[];
   warnings?: AutoCheckResult[];
+}
+
+function extractIp(h: Headers): string {
+  const forwardedFor = h.get('x-forwarded-for');
+  if (forwardedFor) return forwardedFor.split(',')[0].trim();
+  return h.get('x-real-ip') || 'unknown';
 }
 
 export async function submitRx(input: SubmitRxInput): Promise<SubmitRxResult> {
@@ -61,6 +66,22 @@ export async function submitRx(input: SubmitRxInput): Promise<SubmitRxResult> {
 
   const supabase = createAdminClient();
 
+  const { data: order, error: orderError } = await supabase
+    .from('orders')
+    .select('customer_email')
+    .eq('id', input.orderId)
+    .single();
+
+  if (orderError || !order) {
+    errors.push({
+      field: 'order',
+      passed: false,
+      type: 'error',
+      message: 'Order not found',
+    });
+    return { success: false, errors };
+  }
+
   const { data: fileData, error: downloadError } = await supabase.storage
     .from('rx-files')
     .download(input.storagePath);
@@ -87,6 +108,10 @@ export async function submitRx(input: SubmitRxInput): Promise<SubmitRxResult> {
     }
   }
 
+  const h = await headers();
+  const ip = extractIp(h);
+  const userAgent = h.get('user-agent') || 'unknown';
+
   const originalFilename = input.storagePath.split('/').pop() || 'unknown';
 
   const { data: rxFile, error: insertError } = await supabase
@@ -94,7 +119,7 @@ export async function submitRx(input: SubmitRxInput): Promise<SubmitRxResult> {
     .insert({
       order_id: input.orderId,
       line_item_id: input.lineItemId,
-      customer_email: '',
+      customer_email: order.customer_email,
       storage_path: input.storagePath,
       original_filename: originalFilename,
       file_size: fileSize,
@@ -114,8 +139,8 @@ export async function submitRx(input: SubmitRxInput): Promise<SubmitRxResult> {
       auto_check_results: { warnings } as unknown as Json,
       checksum_sha256: checksum,
       scan_quality_score: null,
-      uploaded_by_ip: input.ip,
-      uploaded_by_user_agent: input.userAgent,
+      uploaded_by_ip: ip,
+      uploaded_by_user_agent: userAgent,
     })
     .select('id')
     .single();

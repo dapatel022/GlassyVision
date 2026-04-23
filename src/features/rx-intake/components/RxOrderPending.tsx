@@ -4,10 +4,9 @@ import { useEffect, useState } from 'react';
 
 interface RxOrderPendingProps {
   orderId: string;
-  onOrderFound: () => void;
 }
 
-export default function RxOrderPending({ orderId, onOrderFound: _onOrderFound }: RxOrderPendingProps) {
+export default function RxOrderPending({ orderId }: RxOrderPendingProps) {
   const [attempts, setAttempts] = useState(0);
   const maxAttempts = 10;
 
@@ -16,16 +15,16 @@ export default function RxOrderPending({ orderId, onOrderFound: _onOrderFound }:
 
     const timer = setTimeout(async () => {
       try {
-        await fetch('/api/rx/upload-url', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ orderId, lineItemId: 'check', filename: 'check', mimeType: 'check' }),
-        });
-        if (attempts > 0) {
-          window.location.reload();
+        const res = await fetch(`/api/rx/order-status?orderId=${encodeURIComponent(orderId)}`);
+        if (res.ok) {
+          const body = await res.json() as { exists?: boolean };
+          if (body.exists) {
+            window.location.reload();
+            return;
+          }
         }
       } catch {
-        // ignore
+        // network error — try again
       }
       setAttempts((a) => a + 1);
     }, 3000);

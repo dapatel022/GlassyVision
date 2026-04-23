@@ -83,8 +83,6 @@ export default function RxIntakeWizard({
         certificationChecked: certified,
         typedValues: currentUpload.typedValues || null,
         expirationDate,
-        ip: '',
-        userAgent: navigator.userAgent,
       };
 
       const result = await submitRx(input);
