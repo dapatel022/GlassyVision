@@ -9,19 +9,19 @@ insert into storage.buckets (id, name, public) values ('product-images', 'produc
 create policy "Reviewer reads rx-files"
   on storage.objects for select using (
     bucket_id = 'rx-files' and
-    auth.has_role(array['founder', 'reviewer']::user_role[])
+    public.has_role(array['founder', 'reviewer']::user_role[])
   );
 
 -- RLS for qc-photos: lab roles can write, founder/lab can read
 create policy "Lab writes qc-photos"
   on storage.objects for insert with check (
     bucket_id = 'qc-photos' and
-    auth.has_role(array['founder', 'lab_admin', 'lab_qc']::user_role[])
+    public.has_role(array['founder', 'lab_admin', 'lab_qc']::user_role[])
   );
 create policy "Lab reads qc-photos"
   on storage.objects for select using (
     bucket_id = 'qc-photos' and
-    auth.has_role(array['founder', 'lab_admin', 'lab_operator', 'lab_qc']::user_role[])
+    public.has_role(array['founder', 'lab_admin', 'lab_operator', 'lab_qc']::user_role[])
   );
 
 -- Product images: public read

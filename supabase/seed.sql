@@ -7,7 +7,7 @@
 -- ============================================================
 
 -- Founder / admin user
-insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_user_meta_data, created_at, updated_at, confirmation_token, recovery_token)
+insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_user_meta_data, created_at, updated_at, confirmation_token, recovery_token, email_change, email_change_token_new, email_change_token_current, reauthentication_token, phone_change, phone_change_token)
 values (
   'a0000000-0000-0000-0000-000000000001',
   '00000000-0000-0000-0000-000000000000',
@@ -16,11 +16,11 @@ values (
   crypt('password123', gen_salt('bf')),
   now(),
   '{"full_name": "Dev Founder"}'::jsonb,
-  now(), now(), '', ''
+  now(), now(), '', '', '', '', '', '', '', ''
 );
 
 -- Reviewer (Rx image reviewer)
-insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_user_meta_data, created_at, updated_at, confirmation_token, recovery_token)
+insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_user_meta_data, created_at, updated_at, confirmation_token, recovery_token, email_change, email_change_token_new, email_change_token_current, reauthentication_token, phone_change, phone_change_token)
 values (
   'a0000000-0000-0000-0000-000000000002',
   '00000000-0000-0000-0000-000000000000',
@@ -29,11 +29,11 @@ values (
   crypt('password123', gen_salt('bf')),
   now(),
   '{"full_name": "Dev Reviewer"}'::jsonb,
-  now(), now(), '', ''
+  now(), now(), '', '', '', '', '', '', '', ''
 );
 
 -- Lab admin
-insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_user_meta_data, created_at, updated_at, confirmation_token, recovery_token)
+insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_user_meta_data, created_at, updated_at, confirmation_token, recovery_token, email_change, email_change_token_new, email_change_token_current, reauthentication_token, phone_change, phone_change_token)
 values (
   'a0000000-0000-0000-0000-000000000003',
   '00000000-0000-0000-0000-000000000000',
@@ -42,11 +42,11 @@ values (
   crypt('password123', gen_salt('bf')),
   now(),
   '{"full_name": "Dev Lab Admin"}'::jsonb,
-  now(), now(), '', ''
+  now(), now(), '', '', '', '', '', '', '', ''
 );
 
 -- Lab operator
-insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_user_meta_data, created_at, updated_at, confirmation_token, recovery_token)
+insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_user_meta_data, created_at, updated_at, confirmation_token, recovery_token, email_change, email_change_token_new, email_change_token_current, reauthentication_token, phone_change, phone_change_token)
 values (
   'a0000000-0000-0000-0000-000000000004',
   '00000000-0000-0000-0000-000000000000',
@@ -55,7 +55,7 @@ values (
   crypt('password123', gen_salt('bf')),
   now(),
   '{"full_name": "Dev Lab Operator"}'::jsonb,
-  now(), now(), '', ''
+  now(), now(), '', '', '', '', '', '', '', ''
 );
 
 -- The on_auth_user_created trigger fires automatically and creates profiles.

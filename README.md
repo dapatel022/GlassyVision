@@ -140,11 +140,46 @@ npx supabase gen types typescript --project-id <id> > src/lib/supabase/types.ts
 ## Scripts
 
 ```bash
-npm run dev        # dev server with Turbopack on :3000
+npm run dev        # dev server with Turbopack on :3000 (falls back to :3001 if busy)
 npm run build      # production build (route table appears in output)
-npm run lint       # ESLint — should be 0 errors before commit
-npx vitest run     # unit + integration tests (currently 50/50 passing)
+npm run lint       # ESLint — 0 errors, 0 warnings expected
+npm test           # unit + integration tests (50/50 passing)
+npm run e2e        # Playwright browser smoke tests (15 tests, requires dev server)
+npx tsc --noEmit   # TypeScript strict check — should exit 0
 ```
+
+## Local development with Supabase
+
+The repo ships with `supabase/config.toml` + `supabase/seed.sql` so a full local stack comes up with one command:
+
+```bash
+npx supabase start         # boots Postgres + Auth + Storage + Studio on :54321-:54324
+npx supabase db reset      # re-applies all 19 migrations + reseeds
+npx supabase status -o env # prints ANON_KEY + SERVICE_ROLE_KEY for .env.local
+```
+
+Seeded test users (password: `password123`):
+- `founder@glassyvision.dev` — admin access everywhere
+- `reviewer@glassyvision.dev` — Rx review queue
+- `labadmin@glassyvision.dev` — lab kanban + shipping
+- `labop@glassyvision.dev` — lab operator
+
+Seeded order: `GV-1001`, `awaiting_upload`, one Rx-required line item. Studio: http://127.0.0.1:54323.
+
+## Production deploy checklist
+
+Before the first public deploy, in this order:
+
+1. **Supabase project** — create at supabase.com, capture URL + anon + service_role keys.
+2. **Apply migrations** — `npx supabase link --project-ref <id>` then `npx supabase db push`.
+3. **Seed production carefully** — do NOT run `seed.sql` on prod. Create real founder/reviewer accounts via Supabase Studio instead.
+4. **Shopify Basic store** — configure products, enable Storefront API + Admin API, capture 3 tokens.
+5. **Register webhook** — point `orders/create` + `orders/fulfilled` at `https://glassyvision.com/api/shopify/webhooks` with the `SHOPIFY_WEBHOOK_SECRET` you generate.
+6. **Vercel env vars** — set all 10 required + optional env vars (see `.env.example`). Generate fresh 64-char hex secrets for `RX_TOKEN_SECRET`, `CRON_SECRET`.
+7. **Vercel Cron** — `vercel.json` defines the 05:00 UTC reconcile job. Verify on the Vercel dashboard after first deploy.
+8. **Install Sentry** — `npm i @sentry/nextjs && npx @sentry/wizard@latest -i nextjs`, then delete `src/lib/observability/sentry.ts` stub.
+9. **Install Resend for email** — `npm i resend`, wire into `/api/newsletter/subscribe`, `/api/shopify/webhooks` (Rx reminder), admin invite flow.
+10. **Playwright in CI** — run `npm run e2e` on every PR.
 
 ## Key flows
 
