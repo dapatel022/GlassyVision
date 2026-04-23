@@ -5,6 +5,11 @@ vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn(() => ({ from: mockFrom })),
 }));
 
+const generateWorkOrderMock = vi.fn(() => Promise.resolve({ success: true, workOrderId: 'wo-1', workOrderNumber: 'WO-202604-001' }));
+vi.mock('@/features/admin/actions/generate-work-order', () => ({
+  generateWorkOrder: generateWorkOrderMock,
+}));
+
 describe('reviewRx', () => {
   beforeEach(() => {
     mockFrom.mockReset();

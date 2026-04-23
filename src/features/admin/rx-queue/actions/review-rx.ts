@@ -2,6 +2,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import type { Database, Json } from '@/lib/supabase/types';
+import { generateWorkOrder } from '@/features/admin/actions/generate-work-order';
 
 type RxDecision = Database['public']['Enums']['rx_decision'];
 type RxRejectionReason = Database['public']['Enums']['rx_rejection_reason'];
@@ -72,6 +73,19 @@ export async function reviewRx(input: ReviewRxInput): Promise<ReviewRxResult> {
       .from('rx_files')
       .update({ deleted_at: new Date().toISOString() })
       .eq('id', input.rxFileId);
+  }
+
+  if (input.decision === 'approved') {
+    const genResult = await generateWorkOrder(input.rxFileId);
+    if (!genResult.success) {
+      await supabase.from('audit_log').insert({
+        user_id: input.reviewerUserId,
+        action: 'work_order_generation_failed',
+        entity_type: 'rx_files',
+        entity_id: input.rxFileId,
+        after_data: { error: genResult.error } as unknown as Json,
+      });
+    }
   }
 
   return { success: true };
