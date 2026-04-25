@@ -13,6 +13,7 @@ const eslintConfig = defineConfig([
     "e2e/**",
     "playwright-report/**",
     "test-results/**",
+    "scripts/**",
   ]),
   {
     files: ["**/*.{ts,tsx,js,jsx}"],

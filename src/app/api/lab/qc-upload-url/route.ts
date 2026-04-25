@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
 
   const supabase = createAdminClient();
   const { data, error } = await supabase.storage
-    .from('lab-qc')
+    .from('qc-photos')
     .createSignedUploadUrl(storagePath);
 
   if (error || !data) return NextResponse.json({ error: 'Failed to sign upload' }, { status: 500 });
