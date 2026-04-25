@@ -14,7 +14,7 @@ export function isLabRole(role: UserRole): boolean {
 }
 
 export async function getCurrentUser() {
-  const supabase = createServerClient();
+  const supabase = await createServerClient();
 
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) return null;
