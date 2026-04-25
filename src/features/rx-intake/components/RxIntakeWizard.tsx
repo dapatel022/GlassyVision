@@ -22,6 +22,8 @@ interface RxIntakeWizardProps {
   lineItems: LineItem[];
   customerEmail: string;
   rejectionReason?: string;
+  token: string;
+  exp: number;
 }
 
 interface UploadState {
@@ -34,7 +36,7 @@ interface UploadState {
 type Step = 'assignment' | 'upload' | 'typed-values' | 'certification' | 'success' | 'later';
 
 export default function RxIntakeWizard({
-  orderId, orderDbId, lineItems, customerEmail, rejectionReason,
+  orderId, orderDbId, lineItems, customerEmail, rejectionReason, token, exp,
 }: RxIntakeWizardProps) {
   const [step, setStep] = useState<Step>(lineItems.length > 1 ? 'assignment' : 'upload');
   const [mode, setMode] = useState<'same' | 'per-item'>('same');
@@ -157,6 +159,8 @@ export default function RxIntakeWizard({
         <RxUploadStep
           orderId={orderId}
           lineItemId={currentItem.id}
+          token={token}
+          exp={exp}
           onUploadComplete={handleUploadComplete}
           onSkipLater={handleSkipLater}
         />

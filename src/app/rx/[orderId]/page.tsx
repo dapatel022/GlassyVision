@@ -128,6 +128,8 @@ export default async function RxIntakePage({ params, searchParams }: PageProps) 
             lineItems={rxLineItems}
             customerEmail={order.customer_email}
             rejectionReason={latestReview.decision_reason ?? undefined}
+            token={tokenParams!.token}
+            exp={tokenParams!.exp}
           />
         </div>
       </div>
@@ -167,6 +169,8 @@ export default async function RxIntakePage({ params, searchParams }: PageProps) 
           orderDbId={order.id}
           lineItems={remainingItems}
           customerEmail={order.customer_email}
+          token={tokenParams!.token}
+          exp={tokenParams!.exp}
         />
       </div>
     </div>

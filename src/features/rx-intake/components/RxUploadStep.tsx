@@ -6,6 +6,8 @@ import RxPhotoTips from './RxPhotoTips';
 interface RxUploadStepProps {
   orderId: string;
   lineItemId: string;
+  token: string;
+  exp: number;
   onUploadComplete: (storagePath: string, mimeType: string) => void;
   onSkipLater: () => void;
 }
@@ -13,7 +15,7 @@ interface RxUploadStepProps {
 const ACCEPTED_TYPES = 'image/jpeg,image/png,image/heic,image/heif,application/pdf';
 const MAX_SIZE = 10 * 1024 * 1024;
 
-export default function RxUploadStep({ orderId, lineItemId, onUploadComplete, onSkipLater }: RxUploadStepProps) {
+export default function RxUploadStep({ orderId, lineItemId, token, exp, onUploadComplete, onSkipLater }: RxUploadStepProps) {
   const [preview, setPreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -45,6 +47,8 @@ export default function RxUploadStep({ orderId, lineItemId, onUploadComplete, on
         body: JSON.stringify({
           orderId,
           lineItemId,
+          token,
+          exp,
           filename: file.name,
           mimeType: file.type || 'image/jpeg',
         }),

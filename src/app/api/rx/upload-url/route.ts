@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { verifyRxToken } from '@/features/rx-intake/lib/rx-token';
 
 const ALLOWED_TYPES = [
   'image/jpeg', 'image/png', 'image/heic', 'image/heif', 'application/pdf',
@@ -9,33 +9,32 @@ const MAX_SIZE_BYTES = 10 * 1024 * 1024;
 const SIGNED_URL_EXPIRY_SECONDS = 300;
 
 export async function POST(request: NextRequest) {
-  const cookieStore = await cookies();
-  const session = cookieStore.get('rx_session')?.value;
-  if (!session) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const body = await request.json().catch(() => null) as {
+    orderId?: string;
+    lineItemId?: string;
+    filename?: string;
+    mimeType?: string;
+    token?: string;
+    exp?: number;
+  } | null;
 
-  const body = await request.json();
-  const { orderId, lineItemId, filename, mimeType } = body as {
-    orderId: string;
-    lineItemId: string;
-    filename: string;
-    mimeType: string;
-  };
-
-  if (!orderId || !lineItemId || !filename || !mimeType) {
+  if (!body?.orderId || !body.lineItemId || !body.filename || !body.mimeType || !body.token || !body.exp) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
   }
 
-  if (!ALLOWED_TYPES.includes(mimeType)) {
+  if (!verifyRxToken(body.orderId, body.token, body.exp)) {
+    return NextResponse.json({ error: 'Invalid or expired token' }, { status: 401 });
+  }
+
+  if (!ALLOWED_TYPES.includes(body.mimeType)) {
     return NextResponse.json(
       { error: 'File type not allowed. Accepted: JPEG, PNG, HEIC, PDF' },
       { status: 400 },
     );
   }
 
-  const ext = filename.split('.').pop()?.toLowerCase() || 'jpg';
-  const storagePath = `${orderId}/${lineItemId}/${crypto.randomUUID()}.${ext}`;
+  const ext = body.filename.split('.').pop()?.toLowerCase() || 'jpg';
+  const storagePath = `${body.orderId}/${body.lineItemId}/${crypto.randomUUID()}.${ext}`;
 
   const supabase = createAdminClient();
   const { data, error } = await supabase.storage
