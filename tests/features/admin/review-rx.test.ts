@@ -5,6 +5,11 @@ vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn(() => ({ from: mockFrom })),
 }));
 
+vi.mock('@/lib/auth/middleware', () => ({
+  getCurrentUser: vi.fn(() => Promise.resolve({ id: 'user-1', email: 'r@x.com', role: 'reviewer', fullName: 'R' })),
+  isAdminRole: (role: string) => role === 'founder' || role === 'reviewer',
+}));
+
 const generateWorkOrderMock = vi.fn(() => Promise.resolve({ success: true, workOrderId: 'wo-1', workOrderNumber: 'WO-202604-001' }));
 vi.mock('@/features/admin/actions/generate-work-order', () => ({
   generateWorkOrder: generateWorkOrderMock,
@@ -46,7 +51,6 @@ describe('reviewRx', () => {
 
     const result = await reviewRx({
       rxFileId: 'rx-1',
-      reviewerUserId: 'user-1',
       decision: 'approved',
       decisionReason: 'clean_approved',
       notes: null,
@@ -92,7 +96,6 @@ describe('reviewRx', () => {
 
     const result = await reviewRx({
       rxFileId: 'rx-2',
-      reviewerUserId: 'user-1',
       decision: 'rejected',
       decisionReason: 'image_too_blurry',
       notes: 'Try again with better lighting',
@@ -120,7 +123,6 @@ describe('reviewRx', () => {
 
     const result = await reviewRx({
       rxFileId: 'rx-missing',
-      reviewerUserId: 'user-1',
       decision: 'approved',
       decisionReason: 'clean_approved',
       notes: null,
@@ -128,5 +130,25 @@ describe('reviewRx', () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toBe('Rx file not found');
+  });
+
+  it('rejects callers who are not admin/reviewer (privilege escalation guard)', async () => {
+    const { getCurrentUser } = await import('@/lib/auth/middleware');
+    vi.mocked(getCurrentUser).mockResolvedValueOnce({
+      id: 'lab-op-1', email: 'lab@x.com', role: 'lab_operator', fullName: 'L',
+    });
+
+    const { reviewRx } = await import('@/features/admin/rx-queue/actions/review-rx');
+
+    const result = await reviewRx({
+      rxFileId: 'rx-1',
+      decision: 'approved',
+      decisionReason: 'clean_approved',
+      notes: null,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Forbidden');
+    expect(mockFrom).not.toHaveBeenCalled();
   });
 });

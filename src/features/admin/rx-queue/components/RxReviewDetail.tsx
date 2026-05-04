@@ -26,7 +26,6 @@ interface RxDetail {
 
 interface RxReviewDetailProps {
   detail: RxDetail;
-  reviewerUserId: string;
   onReviewComplete: () => void;
 }
 
@@ -39,7 +38,7 @@ const REJECTION_REASONS: { value: RxRejectionReason; label: string }[] = [
   { value: 'other', label: 'Other' },
 ];
 
-export default function RxReviewDetail({ detail, reviewerUserId, onReviewComplete }: RxReviewDetailProps) {
+export default function RxReviewDetail({ detail, onReviewComplete }: RxReviewDetailProps) {
   const [submitting, setSubmitting] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectReason, setRejectReason] = useState<RxRejectionReason>('image_too_blurry');
@@ -49,20 +48,18 @@ export default function RxReviewDetail({ detail, reviewerUserId, onReviewComplet
     setSubmitting(true);
     await reviewRx({
       rxFileId: detail.id,
-      reviewerUserId,
       decision: 'approved',
       decisionReason: 'clean_approved',
       notes: null,
     });
     setSubmitting(false);
     onReviewComplete();
-  }, [detail.id, reviewerUserId, onReviewComplete]);
+  }, [detail.id, onReviewComplete]);
 
   async function handleReject() {
     setSubmitting(true);
     await reviewRx({
       rxFileId: detail.id,
-      reviewerUserId,
       decision: 'rejected',
       decisionReason: rejectReason,
       notes: rejectNotes || null,

@@ -1,6 +1,7 @@
 'use server';
 
 import { createAdminClient } from '@/lib/supabase/admin';
+import { getCurrentUser, isAdminRole } from '@/lib/auth/middleware';
 import type { Database, Json } from '@/lib/supabase/types';
 import { generateWorkOrder } from '@/features/admin/actions/generate-work-order';
 
@@ -10,7 +11,6 @@ type RxStatus = Database['public']['Enums']['rx_status'];
 
 export interface ReviewRxInput {
   rxFileId: string;
-  reviewerUserId: string;
   decision: RxDecision;
   decisionReason: RxRejectionReason;
   notes: string | null;
@@ -22,6 +22,12 @@ export interface ReviewRxResult {
 }
 
 export async function reviewRx(input: ReviewRxInput): Promise<ReviewRxResult> {
+  const user = await getCurrentUser();
+  if (!user || !isAdminRole(user.role)) {
+    return { success: false, error: 'Forbidden' };
+  }
+  const reviewerUserId = user.id;
+
   const supabase = createAdminClient();
 
   const { data: rxFile, error: fetchError } = await supabase
@@ -38,7 +44,7 @@ export async function reviewRx(input: ReviewRxInput): Promise<ReviewRxResult> {
     .from('rx_reviews')
     .insert({
       rx_file_id: input.rxFileId,
-      reviewer_user_id: input.reviewerUserId,
+      reviewer_user_id: reviewerUserId,
       decision: input.decision,
       decision_reason: input.decisionReason,
       notes: input.notes,
@@ -51,7 +57,7 @@ export async function reviewRx(input: ReviewRxInput): Promise<ReviewRxResult> {
   }
 
   await supabase.from('audit_log').insert({
-    user_id: input.reviewerUserId,
+    user_id: reviewerUserId,
     action: 'rx_review',
     entity_type: 'rx_files',
     entity_id: input.rxFileId,
@@ -79,7 +85,7 @@ export async function reviewRx(input: ReviewRxInput): Promise<ReviewRxResult> {
     const genResult = await generateWorkOrder(input.rxFileId);
     if (!genResult.success) {
       await supabase.from('audit_log').insert({
-        user_id: input.reviewerUserId,
+        user_id: reviewerUserId,
         action: 'work_order_generation_failed',
         entity_type: 'rx_files',
         entity_id: input.rxFileId,

@@ -127,8 +127,11 @@ export default function RxIntakeWizard({
         <h2 className="font-sans text-2xl font-black tracking-tight uppercase text-ink mb-2">
           No Problem!
         </h2>
-        <p className="text-muted max-w-md mx-auto">
-          We&apos;ve sent a link to <strong>{customerEmail}</strong>. Your order will be held until we receive your prescription.
+        <p className="text-muted max-w-md mx-auto mb-3">
+          We&apos;ve sent your upload link to <strong>{customerEmail}</strong>. Open it any time you&apos;re ready.
+        </p>
+        <p className="text-muted max-w-md mx-auto text-sm">
+          We&apos;ll send a few reminders over the coming weeks. <strong>Your glasses won&apos;t ship until we receive a valid prescription.</strong>
         </p>
       </div>
     );

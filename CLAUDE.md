@@ -47,8 +47,9 @@ This file is load-bearing. Read it at the start of every session. Update it when
 
 These rules are not negotiable. We decided them explicitly — see `docs/superpowers/specs/` for rationale.
 
-1. **Rx image upload is REQUIRED** for any prescription order. Customers may also type numbers, but the image is mandatory — not optional.
-2. **Never accept typed-only Rx.** If no image, no order. Block at the form level.
+1. **Rx image upload is REQUIRED before shipment.** A customer may place a prescription order and skip Rx upload at intake — the order will sit in `awaiting_rx` state. Lab work orders are only generated after admin approval of an uploaded Rx, so nothing ships without a valid image on file. The shipment gate, not the intake form, is the compliance line.
+2. **Never accept typed-only Rx for fulfillment.** Typed values are double-check input; an image is always required before approval. Reject any review path that lets typed-only Rx reach the lab.
+2a. **Reminder cadence for awaiting-Rx orders:** automated email reminders on day 1, 3, 7, 14, 30, 60, 90 after order. **No auto-cancel** — admin always decides when (or whether) to cancel + refund a stalled order. Surface aging awaiting-Rx orders on the admin dashboard so they can be triaged manually.
 3. **Store Rx files for at least 3 years** in Supabase Storage (or equivalent). Retention policy is non-negotiable — this is FTC Eyeglass Rule territory.
 4. **Rx files are PII and restricted.** Never commit them, never log their contents, never expose them outside the admin/lab dashboards behind auth.
 5. **Manual review queue:** every Rx must be eyeballed by an admin (you or the India team) before the work order is released to the lab.
@@ -74,7 +75,7 @@ These rules are not negotiable. We decided them explicitly — see `docs/superpo
 - **Don't use the "LENSABL" name.** The existing scaffold copied Lensabl — a real competitor. All references must be stripped before any deploy. Trademark risk.
 - **Don't commit Rx images, customer PII, or `.env` files.** `.gitignore` blocks these but double-check before commits.
 - **Don't add UK Rx checkout in phase 1.** Sunglasses-only to UK until an optician is retained.
-- **Don't accept typed-only prescriptions.** Image upload is required.
+- **Don't approve a Rx without an image.** Typed values alone never reach the lab. (Customer skipping upload at intake is fine — they'll be reminded; just don't bypass image-on-review.)
 - **Don't call doctors or build "we verify your Rx" flows.** User explicitly decided against verification partners.
 - **Don't add features beyond the current spec.** No speculative functionality. YAGNI hard.
 - **Don't rebuild Shopify's money path.** Checkout (final step), payments, tax calc, fraud, refunds stay on Shopify. Cart state (pre-checkout) lives in Next.js as localStorage + context; we hand it to Shopify via `cartCreate`/`cartLinesAdd` at checkout handoff.

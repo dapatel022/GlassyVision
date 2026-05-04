@@ -82,5 +82,5 @@ export default async function RxQueuePage() {
     }),
   );
 
-  return <RxQueueClient items={items} reviewerUserId={user.id} />;
+  return <RxQueueClient items={items} />;
 }

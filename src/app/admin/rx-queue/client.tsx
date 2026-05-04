@@ -26,10 +26,9 @@ interface QueueItem {
 
 interface RxQueueClientProps {
   items: QueueItem[];
-  reviewerUserId: string;
 }
 
-export default function RxQueueClient({ items, reviewerUserId }: RxQueueClientProps) {
+export default function RxQueueClient({ items }: RxQueueClientProps) {
   const [selectedId, setSelectedId] = useState<string | null>(items[0]?.id || null);
   const router = useRouter();
   const selected = items.find((i) => i.id === selectedId) || null;
@@ -64,7 +63,6 @@ export default function RxQueueClient({ items, reviewerUserId }: RxQueueClientPr
           {selected ? (
             <RxReviewDetail
               detail={selected}
-              reviewerUserId={reviewerUserId}
               onReviewComplete={() => router.refresh()}
             />
           ) : (
