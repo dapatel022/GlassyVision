@@ -20,11 +20,24 @@ function getClient(): Resend | null {
   return cachedClient;
 }
 
+function isProduction(): boolean {
+  return process.env.NODE_ENV === 'production';
+}
+
 export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult> {
   const client = getClient();
   if (!client) {
-    console.log('[email:stub] would send', { to: input.to, subject: input.subject });
-    return { success: false, error: 'RESEND_API_KEY not set' };
+    if (isProduction()) {
+      // Missing RESEND_API_KEY in production is a config-incident-grade
+      // failure. Surface it loudly via console.error so Vercel function
+      // logs make it visible; the cron caller will record a status='failed'
+      // comms row and bubble up to a 500 response.
+      console.error('[email] RESEND_API_KEY not set in production — refusing to send');
+      return { success: false, error: 'RESEND_API_KEY not set (production)' };
+    }
+    // Dev / test: log the subject only (never the recipient — PII).
+    console.log('[email:stub]', { subject: input.subject });
+    return { success: false, error: 'RESEND_API_KEY not set (dev stub)' };
   }
 
   const from = process.env.RESEND_FROM_EMAIL ?? 'hello@glassyvision.com';
