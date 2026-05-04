@@ -15,28 +15,42 @@ export interface AwaitingRxOrder {
 export async function listAwaitingRx(): Promise<AwaitingRxOrder[]> {
   const supabase = createAdminClient();
 
-  const { data: orders } = await supabase
+  const { data: orders, error: ordersError } = await supabase
     .from('orders')
     .select('id, shopify_order_number, customer_email, created_at')
     .eq('rx_status', 'awaiting_upload')
     .order('created_at', { ascending: true });
 
+  if (ordersError) {
+    console.error('[awaiting-rx] orders query failed', ordersError);
+    throw new Error(`listAwaitingRx orders query: ${ordersError.message}`);
+  }
   if (!orders || orders.length === 0) return [];
 
   const orderIds = orders.map((o) => o.id);
-  const { data: comms } = await supabase
+  const { data: comms, error: commsError } = await supabase
     .from('communications')
-    .select('order_id, sent_at, metadata')
+    .select('order_id, sent_at, metadata, status')
     .in('order_id', orderIds)
     .eq('type', 'rx_reminder')
+    .eq('direction', 'outbound')
     .order('sent_at', { ascending: false, nullsFirst: false });
 
+  if (commsError) {
+    console.error('[awaiting-rx] comms query failed', commsError);
+    throw new Error(`listAwaitingRx comms query: ${commsError.message}`);
+  }
+
+  // count = all attempts (successful + failed) so admins can see Resend
+  // trouble. lastAt/lastDay = last SUCCESSFUL send, since that's what the
+  // customer actually received.
   const byOrder = new Map<string, { count: number; lastAt: string | null; lastDay: number | null }>();
   for (const c of comms ?? []) {
     if (!c.order_id) continue;
     const cur = byOrder.get(c.order_id) ?? { count: 0, lastAt: null, lastDay: null };
     cur.count += 1;
-    if (cur.lastAt === null && c.sent_at) {
+    const isSuccessful = c.status === 'sent' || c.status === 'delivered';
+    if (cur.lastAt === null && isSuccessful && c.sent_at) {
       cur.lastAt = c.sent_at;
       const meta = c.metadata as { reminder_day?: number } | null;
       cur.lastDay = typeof meta?.reminder_day === 'number' ? meta.reminder_day : null;

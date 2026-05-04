@@ -56,7 +56,7 @@ export async function reviewRx(input: ReviewRxInput): Promise<ReviewRxResult> {
     return { success: false, error: 'Failed to save review' };
   }
 
-  await supabase.from('audit_log').insert({
+  const { error: auditError } = await supabase.from('audit_log').insert({
     user_id: reviewerUserId,
     action: 'rx_review',
     entity_type: 'rx_files',
@@ -67,30 +67,47 @@ export async function reviewRx(input: ReviewRxInput): Promise<ReviewRxResult> {
       notes: input.notes,
     } as unknown as Json,
   });
+  if (auditError) {
+    // Compliance audit trail must not silently disappear. Log loudly so
+    // operators see it, but don't block the review (the rx_reviews row
+    // already exists — that's the primary record).
+    console.error('[review-rx] audit_log insert failed', { rxFileId: input.rxFileId, error: auditError });
+  }
 
   const newStatus: RxStatus = input.decision === 'approved' ? 'approved' : 'rejected';
-  await supabase
+  const { error: updateError } = await supabase
     .from('orders')
     .update({ rx_status: newStatus })
     .eq('id', rxFile.order_id);
+  if (updateError) {
+    console.error('[review-rx] orders.rx_status update failed', { orderId: rxFile.order_id, error: updateError });
+    return { success: false, error: 'Review saved but order status update failed — please retry or contact support' };
+  }
 
   if (input.decision === 'rejected') {
-    await supabase
+    const { error: deleteError } = await supabase
       .from('rx_files')
       .update({ deleted_at: new Date().toISOString() })
       .eq('id', input.rxFileId);
+    if (deleteError) {
+      console.error('[review-rx] rx_files soft-delete failed', { rxFileId: input.rxFileId, error: deleteError });
+    }
   }
 
   if (input.decision === 'approved') {
     const genResult = await generateWorkOrder(input.rxFileId);
     if (!genResult.success) {
-      await supabase.from('audit_log').insert({
+      console.error('[review-rx] work order generation failed', { rxFileId: input.rxFileId, error: genResult.error });
+      const { error: failureAuditError } = await supabase.from('audit_log').insert({
         user_id: reviewerUserId,
         action: 'work_order_generation_failed',
         entity_type: 'rx_files',
         entity_id: input.rxFileId,
         after_data: { error: genResult.error } as unknown as Json,
       });
+      if (failureAuditError) {
+        console.error('[review-rx] failure-audit insert failed', failureAuditError);
+      }
     }
   }
 
