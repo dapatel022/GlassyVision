@@ -700,6 +700,7 @@ export type Database = {
           status: Database['public']['Enums']['comm_status'];
           sent_at: string | null;
           delivered_at: string | null;
+          metadata: Json;
         };
         Insert: {
           id?: string;
@@ -715,6 +716,7 @@ export type Database = {
           status?: Database['public']['Enums']['comm_status'];
           sent_at?: string | null;
           delivered_at?: string | null;
+          metadata?: Json;
         };
         Update: {
           id?: string;
@@ -730,6 +732,7 @@ export type Database = {
           status?: Database['public']['Enums']['comm_status'];
           sent_at?: string | null;
           delivered_at?: string | null;
+          metadata?: Json;
         };
         Relationships: [
           { foreignKeyName: 'communications_order_id_fkey'; columns: ['order_id']; referencedRelation: 'orders'; referencedColumns: ['id'] },
