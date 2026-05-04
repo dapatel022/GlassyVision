@@ -21,45 +21,78 @@ interface OrderRow {
 
 interface CommRow {
   metadata: { reminder_day?: number } | null;
+  status: 'queued' | 'sent' | 'failed' | 'delivered' | 'bounced';
 }
 
 function daysAgoIso(days: number): string {
   return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 }
 
-function setupMockTables(opts: {
+interface MockOpts {
   orders: OrderRow[];
+  ordersError?: { message: string };
   commsByOrder?: Record<string, CommRow[]>;
-  insertCapture?: { rows: unknown[] };
-}) {
-  const insertCapture = opts.insertCapture ?? { rows: [] };
+  commsQueryError?: { message: string };
+  claimError?: { message: string };
+  updateError?: { message: string };
+}
+
+interface Capture {
+  inserted: Array<Record<string, unknown>>;
+  updates: Array<{ id: string; patch: Record<string, unknown> }>;
+}
+
+function setupMockTables(opts: MockOpts): Capture {
+  const capture: Capture = { inserted: [], updates: [] };
+  let claimSeq = 0;
+
   mockFrom.mockImplementation((table: string) => {
     if (table === 'orders') {
       return {
         select: () => ({
-          eq: () => Promise.resolve({ data: opts.orders, error: null }),
+          eq: () => Promise.resolve({
+            data: opts.ordersError ? null : opts.orders,
+            error: opts.ordersError ?? null,
+          }),
         }),
       };
     }
     if (table === 'communications') {
       return {
         select: () => ({
-          eq: (_col1: string, _val1: string) => ({
-            eq: (_col2: string, _val2: string) => Promise.resolve({
-              data: opts.commsByOrder?.[_val1] ?? [],
-              error: null,
+          eq: (_c1: string, val1: string) => ({
+            eq: () => ({
+              eq: () => Promise.resolve({
+                data: opts.commsQueryError ? null : (opts.commsByOrder?.[val1] ?? []),
+                error: opts.commsQueryError ?? null,
+              }),
             }),
           }),
         }),
-        insert: vi.fn((row: unknown) => {
-          insertCapture.rows.push(row);
-          return Promise.resolve({ error: null });
+        insert: vi.fn((row: Record<string, unknown>) => {
+          if (opts.claimError) {
+            return {
+              select: () => ({ single: () => Promise.resolve({ data: null, error: opts.claimError }) }),
+            };
+          }
+          capture.inserted.push(row);
+          claimSeq++;
+          const id = `claim-${claimSeq}`;
+          return {
+            select: () => ({ single: () => Promise.resolve({ data: { id }, error: null }) }),
+          };
         }),
+        update: vi.fn((patch: Record<string, unknown>) => ({
+          eq: (_col: string, val: string) => {
+            capture.updates.push({ id: val, patch });
+            return Promise.resolve({ error: opts.updateError ?? null });
+          },
+        })),
       };
     }
     return {};
   });
-  return insertCapture;
+  return capture;
 }
 
 const ORIGINAL_CRON_SECRET = process.env.CRON_SECRET;
@@ -91,14 +124,27 @@ describe('rx-reminder cron route', () => {
     expect(res.status).toBe(401);
   });
 
-  it('rejects requests with no auth header at all', async () => {
+  it('rejects requests with no auth header', async () => {
     const { GET } = await import('@/app/api/cron/rx-reminder/route');
     const res = await GET(buildRequest());
     expect(res.status).toBe(401);
   });
 
-  it('sends a day-1 reminder for an order created ~1 day ago with no prior sends', async () => {
-    const insertCapture = setupMockTables({
+  it('rejects when CRON_SECRET is unset, even with a Bearer header', async () => {
+    delete process.env.CRON_SECRET;
+    const { GET } = await import('@/app/api/cron/rx-reminder/route');
+    const res = await GET(buildRequest('Bearer anything'));
+    expect(res.status).toBe(401);
+  });
+
+  it('rejects a Bearer of the wrong length (constant-time guard)', async () => {
+    const { GET } = await import('@/app/api/cron/rx-reminder/route');
+    const res = await GET(buildRequest('Bearer test-secret-extra-bytes'));
+    expect(res.status).toBe(401);
+  });
+
+  it('claim-then-send-then-update: day-1 happy path', async () => {
+    const capture = setupMockTables({
       orders: [{
         id: 'o-1',
         shopify_order_number: 'GV-1001',
@@ -114,16 +160,23 @@ describe('rx-reminder cron route', () => {
     expect(res.status).toBe(200);
     expect(body.sent).toBe(1);
     expect(sendEmailMock).toHaveBeenCalledTimes(1);
-    expect(sendEmailMock.mock.calls[0][0].to).toBe('c@x.com');
-    expect(insertCapture.rows).toHaveLength(1);
-    const insertedRow = insertCapture.rows[0] as { metadata: { reminder_day: number }; type: string; status: string };
-    expect(insertedRow.type).toBe('rx_reminder');
-    expect(insertedRow.metadata.reminder_day).toBe(1);
-    expect(insertedRow.status).toBe('sent');
+
+    // Insert came first, with status 'queued' and metadata.reminder_day
+    expect(capture.inserted).toHaveLength(1);
+    const inserted = capture.inserted[0];
+    expect(inserted.status).toBe('queued');
+    expect(inserted.direction).toBe('outbound');
+    expect(inserted.channel).toBe('email');
+    expect((inserted.metadata as { reminder_day: number }).reminder_day).toBe(1);
+
+    // Update flipped status to 'sent'
+    expect(capture.updates).toHaveLength(1);
+    expect(capture.updates[0].patch.status).toBe('sent');
+    expect(capture.updates[0].patch.provider_message_id).toBe('msg-1');
   });
 
-  it('skips orders that are not yet 1 day old', async () => {
-    setupMockTables({
+  it('skips orders that are not yet 1 day old (no claim, no send)', async () => {
+    const capture = setupMockTables({
       orders: [{
         id: 'o-1',
         shopify_order_number: 'GV-1001',
@@ -139,9 +192,10 @@ describe('rx-reminder cron route', () => {
     expect(body.sent).toBe(0);
     expect(body.skipped).toBe(1);
     expect(sendEmailMock).not.toHaveBeenCalled();
+    expect(capture.inserted).toHaveLength(0);
   });
 
-  it('does not re-send a reminder day that was already sent (idempotency)', async () => {
+  it('idempotency: a row marked status=sent for day 1 prevents re-send', async () => {
     setupMockTables({
       orders: [{
         id: 'o-1',
@@ -150,7 +204,7 @@ describe('rx-reminder cron route', () => {
         created_at: daysAgoIso(2),
       }],
       commsByOrder: {
-        'o-1': [{ metadata: { reminder_day: 1 } }],
+        'o-1': [{ metadata: { reminder_day: 1 }, status: 'sent' }],
       },
     });
 
@@ -162,9 +216,30 @@ describe('rx-reminder cron route', () => {
     expect(sendEmailMock).not.toHaveBeenCalled();
   });
 
-  it('records a failed-status comms row when sendEmail fails', async () => {
+  it('failed prior sends do NOT count toward sentDays — day is retried', async () => {
+    const capture = setupMockTables({
+      orders: [{
+        id: 'o-1',
+        shopify_order_number: 'GV-1001',
+        customer_email: 'c@x.com',
+        created_at: daysAgoIso(2),
+      }],
+      // Prior failed send: metadata cleared, status='failed'. Cron should retry.
+      commsByOrder: {
+        'o-1': [{ metadata: null, status: 'failed' }],
+      },
+    });
+
+    const { GET } = await import('@/app/api/cron/rx-reminder/route');
+    await GET(buildRequest('Bearer test-secret'));
+
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+    expect(capture.inserted).toHaveLength(1);
+  });
+
+  it('failed send: row updated to status=failed with metadata.reminder_day cleared', async () => {
     sendEmailMock.mockResolvedValueOnce({ success: false, error: 'Resend boom' });
-    const insertCapture = setupMockTables({
+    const capture = setupMockTables({
       orders: [{
         id: 'o-1',
         shopify_order_number: 'GV-1001',
@@ -177,16 +252,42 @@ describe('rx-reminder cron route', () => {
     const res = await GET(buildRequest('Bearer test-secret'));
     const body = await res.json();
 
-    expect(res.status).toBe(200);
+    // Errors present → 500 status
+    expect(res.status).toBe(500);
+    expect(body.success).toBe(false);
     expect(body.sent).toBe(0);
     expect(body.errors).toHaveLength(1);
-    const insertedRow = insertCapture.rows[0] as { status: string; metadata: { reminder_day: number } };
-    expect(insertedRow.status).toBe('failed');
-    expect(insertedRow.metadata.reminder_day).toBe(1);
+
+    // Update flipped status to failed AND cleared reminder_day from metadata
+    expect(capture.updates).toHaveLength(1);
+    expect(capture.updates[0].patch.status).toBe('failed');
+    const patchedMeta = capture.updates[0].patch.metadata as { reminder_day?: number };
+    expect(patchedMeta.reminder_day).toBeUndefined();
+  });
+
+  it('claim error from concurrent run: skips order without sending', async () => {
+    setupMockTables({
+      orders: [{
+        id: 'o-1',
+        shopify_order_number: 'GV-1001',
+        customer_email: 'c@x.com',
+        created_at: daysAgoIso(1.1),
+      }],
+      claimError: { message: 'duplicate key value violates unique constraint' },
+    });
+
+    const { GET } = await import('@/app/api/cron/rx-reminder/route');
+    const res = await GET(buildRequest('Bearer test-secret'));
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(sendEmailMock).not.toHaveBeenCalled();
+    expect(body.errors).toHaveLength(1);
+    expect(body.errors[0].error).toContain('claim slot');
   });
 
   it('first-send catch-up: 20-day-old order with no sends gets day 14', async () => {
-    const insertCapture = setupMockTables({
+    const capture = setupMockTables({
       orders: [{
         id: 'o-1',
         shopify_order_number: 'GV-1042',
@@ -199,7 +300,76 @@ describe('rx-reminder cron route', () => {
     await GET(buildRequest('Bearer test-secret'));
 
     expect(sendEmailMock).toHaveBeenCalledTimes(1);
-    const insertedRow = insertCapture.rows[0] as { metadata: { reminder_day: number } };
-    expect(insertedRow.metadata.reminder_day).toBe(14);
+    const inserted = capture.inserted[0];
+    expect((inserted.metadata as { reminder_day: number }).reminder_day).toBe(14);
+  });
+
+  it('multi-order run: mixed outcomes do not abort the batch', async () => {
+    sendEmailMock
+      .mockResolvedValueOnce({ success: true, providerMessageId: 'msg-1' })
+      .mockResolvedValueOnce({ success: false, error: 'Resend rate-limited' });
+
+    const capture = setupMockTables({
+      orders: [
+        { id: 'o-1', shopify_order_number: 'GV-1001', customer_email: 'a@x.com', created_at: daysAgoIso(1.1) }, // sends day 1
+        { id: 'o-2', shopify_order_number: 'GV-1002', customer_email: 'b@x.com', created_at: daysAgoIso(0.5) }, // not yet due
+        { id: 'o-3', shopify_order_number: 'GV-1003', customer_email: 'c@x.com', created_at: daysAgoIso(1.1) }, // sends, fails
+      ],
+    });
+
+    const { GET } = await import('@/app/api/cron/rx-reminder/route');
+    const res = await GET(buildRequest('Bearer test-secret'));
+    const body = await res.json();
+
+    expect(res.status).toBe(500); // because of the failure
+    expect(body.sent).toBe(1);
+    expect(body.skipped).toBe(1);
+    expect(body.errors).toHaveLength(1);
+
+    expect(sendEmailMock).toHaveBeenCalledTimes(2); // o-1 and o-3
+    expect(capture.inserted).toHaveLength(2); // both attempted to claim
+  });
+
+  it('per-iteration crash: one bad order does not break the rest', async () => {
+    sendEmailMock
+      .mockRejectedValueOnce(new Error('synchronous boom from network stack'))
+      .mockResolvedValueOnce({ success: true, providerMessageId: 'msg-2' });
+
+    const capture = setupMockTables({
+      orders: [
+        { id: 'o-1', shopify_order_number: 'GV-1001', customer_email: 'a@x.com', created_at: daysAgoIso(1.1) },
+        { id: 'o-2', shopify_order_number: 'GV-1002', customer_email: 'b@x.com', created_at: daysAgoIso(1.1) },
+      ],
+    });
+
+    const { GET } = await import('@/app/api/cron/rx-reminder/route');
+    const res = await GET(buildRequest('Bearer test-secret'));
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body.sent).toBe(1);
+    expect(body.errors).toHaveLength(1);
+    expect(body.errors[0].error).toContain('crash');
+    // Second order still processed
+    expect(capture.updates.some((u) => u.patch.status === 'sent')).toBe(true);
+  });
+
+  it('email URL is composed from shopify_order_number, not the DB id', async () => {
+    setupMockTables({
+      orders: [{
+        id: 'a99e9f3c-aaaa-bbbb-cccc-dddddddddddd',
+        shopify_order_number: 'GV-7777',
+        customer_email: 'c@x.com',
+        created_at: daysAgoIso(1.1),
+      }],
+    });
+
+    const { GET } = await import('@/app/api/cron/rx-reminder/route');
+    await GET(buildRequest('Bearer test-secret'));
+
+    const sendArgs = sendEmailMock.mock.calls[0][0];
+    expect(sendArgs.text).toContain('/rx/GV-7777?');
+    expect(sendArgs.text).not.toContain('a99e9f3c');
+    expect(sendArgs.html).toContain('/rx/GV-7777?');
   });
 });
