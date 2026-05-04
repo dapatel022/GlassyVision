@@ -12,12 +12,20 @@ interface Stat {
 async function getStats(): Promise<Stat[]> {
   const supabase = createAdminClient();
 
-  const [allRxFiles, reviewedFileIds, lowStock, openReturns, ordersAwaitingRx, activeDrops, activeLabJobs] = await Promise.all([
+  const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+  const [
+    allRxFiles, reviewedFileIds, lowStock, openReturns,
+    ordersAwaitingRx, ordersAwaitingRxAged,
+    activeDrops, activeLabJobs,
+  ] = await Promise.all([
     supabase.from('rx_files').select('id').is('deleted_at', null),
     supabase.from('rx_reviews').select('rx_file_id'),
     supabase.from('inventory_pool').select('id, pool_quantity, threshold_alert'),
     supabase.from('returns').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
     supabase.from('orders').select('id', { count: 'exact', head: true }).eq('rx_status', 'awaiting_upload'),
+    supabase.from('orders').select('id', { count: 'exact', head: true })
+      .eq('rx_status', 'awaiting_upload')
+      .lt('created_at', fourteenDaysAgo),
     supabase.from('drops').select('id', { count: 'exact', head: true }).eq('state', 'live'),
     supabase.from('lab_jobs').select('id', { count: 'exact', head: true }).neq('column', 'ship'),
   ]);
@@ -30,7 +38,8 @@ async function getStats(): Promise<Stat[]> {
 
   return [
     { label: 'Rx awaiting review', value: pendingRxCount, href: '/admin/rx-queue' },
-    { label: 'Orders awaiting Rx upload', value: ordersAwaitingRx.count ?? 0, href: '/admin/rx-queue' },
+    { label: 'Orders awaiting Rx upload', value: ordersAwaitingRx.count ?? 0, href: '/admin/awaiting-rx' },
+    { label: 'Awaiting Rx > 14 days', value: ordersAwaitingRxAged.count ?? 0, href: '/admin/awaiting-rx' },
     { label: 'Open returns', value: openReturns.count ?? 0, href: '/admin/returns' },
     { label: 'Active drops', value: activeDrops.count ?? 0, href: '/admin/drops' },
     { label: 'Low-stock SKUs', value: lowStockCount, href: '/admin/inventory' },
@@ -40,6 +49,7 @@ async function getStats(): Promise<Stat[]> {
 
 const SECTIONS: { title: string; description: string; href: string }[] = [
   { title: 'Rx queue', description: 'Review uploaded prescriptions. Approve or reject.', href: '/admin/rx-queue' },
+  { title: 'Awaiting Rx', description: 'Customers who haven’t uploaded yet. Aging rows need triage.', href: '/admin/awaiting-rx' },
   { title: 'Drops', description: 'Manage limited-release product drops.', href: '/admin/drops' },
   { title: 'Inventory', description: 'Frame stock pools and reorder thresholds.', href: '/admin/inventory' },
   { title: 'Returns', description: 'Customer return + exchange requests.', href: '/admin/returns' },
