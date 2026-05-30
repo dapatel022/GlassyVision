@@ -31,11 +31,11 @@ export async function generateWorkOrder(rxFileId: string): Promise<GenerateWorkO
   const { data: rxFile, error: fetchError } = await supabase
     .from('rx_files')
     .select(`
-      id, order_id, line_item_id,
+      id, order_id, line_item_id, storage_path, deleted_at,
       typed_od_sphere, typed_od_cylinder, typed_od_axis, typed_od_add,
       typed_os_sphere, typed_os_cylinder, typed_os_axis, typed_os_add,
       typed_pd, typed_pd_type,
-      rx_reviews (decision),
+      rx_reviews (decision, reviewed_at),
       order_line_items!inner (id, sku, product_title, frame_shape, frame_color, frame_size)
     `)
     .eq('id', rxFileId)
@@ -45,10 +45,19 @@ export async function generateWorkOrder(rxFileId: string): Promise<GenerateWorkO
     return { success: false, error: 'Rx file not found' };
   }
 
-  const reviews = (rxFile as unknown as { rx_reviews: Array<{ decision: string }> }).rx_reviews ?? [];
-  const latest = reviews[reviews.length - 1];
+  // Pick the most recent review by reviewed_at — PostgREST does not guarantee
+  // embedded-relation ordering, so we must not rely on array position.
+  const reviews = (rxFile as unknown as { rx_reviews: Array<{ decision: string; reviewed_at: string }> }).rx_reviews ?? [];
+  const latest = [...reviews].sort((a, b) => (a.reviewed_at < b.reviewed_at ? 1 : -1))[0];
   if (!latest || latest.decision !== 'approved') {
     return { success: false, error: 'Rx is not approved' };
+  }
+
+  // Compliance rule 2: typed values are double-check input only — a real,
+  // non-deleted Rx image must exist before any specs reach the lab. Guards
+  // against a typed-only prescription ever producing a work order.
+  if (!rxFile.storage_path || rxFile.deleted_at) {
+    return { success: false, error: 'Cannot generate work order: Rx image file is missing' };
   }
 
   if (!rxFile.line_item_id) {

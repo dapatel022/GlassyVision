@@ -37,17 +37,28 @@ export async function acceptInvite(input: AcceptInviteInput): Promise<{ success:
     return { success: false, error: authError?.message ?? 'Failed to create account' };
   }
 
+  // The handle_new_user trigger already inserted a 'pending' profile row when
+  // the auth user was created, so upsert (not insert) to promote it to the
+  // invited role without a primary-key collision.
   const { error: profileError } = await supabase
     .from('profiles')
-    .insert({
+    .upsert({
       id: created.user.id,
       email: invitation.email,
       full_name: input.fullName,
       role: invitation.role,
-    });
+    }, { onConflict: 'id' });
 
   if (profileError) {
-    await supabase.auth.admin.deleteUser(created.user.id).catch(() => null);
+    const { error: rollbackError } = await supabase.auth.admin
+      .deleteUser(created.user.id)
+      .catch((e: unknown) => ({ error: e }));
+    if (rollbackError) {
+      // Rollback failed: a zombie auth user now exists with a zero-access
+      // 'pending' profile. Not a security hole, but an ops gap — log loudly so
+      // it can be cleaned up manually (the invitation still reads as unused).
+      console.error('[accept-invite] failed to roll back orphaned auth user', { userId: created.user.id, rollbackError });
+    }
     return { success: false, error: 'Failed to provision profile' };
   }
 

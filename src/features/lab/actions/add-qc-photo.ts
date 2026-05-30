@@ -1,9 +1,15 @@
 'use server';
 
 import { createAdminClient } from '@/lib/supabase/admin';
+import { getCurrentUser, isLabRole } from '@/lib/auth/middleware';
 import type { Json } from '@/lib/supabase/types';
 
 export async function addQcPhoto(jobId: string, storagePath: string): Promise<{ success: boolean; error?: string }> {
+  const user = await getCurrentUser();
+  if (!user || !isLabRole(user.role)) {
+    return { success: false, error: 'Forbidden' };
+  }
+
   const supabase = createAdminClient();
 
   const { data: job } = await supabase

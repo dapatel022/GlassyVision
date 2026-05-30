@@ -382,7 +382,7 @@ export type Database = {
           id: string;
           order_id: string;
           line_item_id: string;
-          rx_file_id: string | null;
+          rx_file_id: string;
           work_order_number: string;
           frame_sku: string;
           frame_shape: string | null;
@@ -414,7 +414,7 @@ export type Database = {
           id?: string;
           order_id: string;
           line_item_id: string;
-          rx_file_id?: string | null;
+          rx_file_id: string;
           work_order_number: string;
           frame_sku: string;
           frame_shape?: string | null;
@@ -446,7 +446,7 @@ export type Database = {
           id?: string;
           order_id?: string;
           line_item_id?: string;
-          rx_file_id?: string | null;
+          rx_file_id?: string;
           work_order_number?: string;
           frame_sku?: string;
           frame_shape?: string | null;
@@ -1104,7 +1104,7 @@ export type Database = {
       };
     };
     Enums: {
-      user_role: 'founder' | 'reviewer' | 'lab_admin' | 'lab_operator' | 'lab_qc' | 'lab_shipping';
+      user_role: 'pending' | 'founder' | 'reviewer' | 'lab_admin' | 'lab_operator' | 'lab_qc' | 'lab_shipping';
       vip_tier: 'none' | 'returning' | 'vip';
       order_financial_status: 'paid' | 'refunded' | 'partial_refund' | 'pending';
       order_fulfillment_status: 'unfulfilled' | 'in_lab' | 'shipped' | 'delivered';

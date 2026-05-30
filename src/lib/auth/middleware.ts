@@ -1,6 +1,9 @@
 import { createServerClient } from '@/lib/supabase/server';
 
-export type UserRole = 'founder' | 'reviewer' | 'lab_admin' | 'lab_operator' | 'lab_qc' | 'lab_shipping';
+export type UserRole = 'pending' | 'founder' | 'reviewer' | 'lab_admin' | 'lab_operator' | 'lab_qc' | 'lab_shipping';
+
+// 'pending' is the zero-access default for freshly-provisioned accounts; it is
+// intentionally absent from both ADMIN_ROLES and LAB_ROLES.
 
 const ADMIN_ROLES: UserRole[] = ['founder', 'reviewer'];
 const LAB_ROLES: UserRole[] = ['founder', 'lab_admin', 'lab_operator', 'lab_qc', 'lab_shipping'];
