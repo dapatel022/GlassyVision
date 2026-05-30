@@ -1,8 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { getCurrentUser, isAdminRole, isLabRole } from '@/lib/auth/middleware';
 import { generateWorkOrderPdf } from '@/features/admin/work-orders/lib/pdf-generator';
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  // The work-order PDF contains prescription values (PII). Staff only — never
+  // expose it to an unauthenticated or zero-access caller who guesses the UUID.
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!isAdminRole(user.role) && !isLabRole(user.role)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
   const { id } = await params;
   const supabase = createAdminClient();
 
