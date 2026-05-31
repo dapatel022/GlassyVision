@@ -76,11 +76,11 @@ export default function WebcamPdModal({ isOpen, onClose, onApply }: WebcamPdModa
   const calculatedPd = cardWidth > 0 ? ((pupilRight - pupilLeft) / cardWidth) * 85.6 : 63;
   const roundedPd = Math.round(calculatedPd * 10) / 10;
 
-  function handleMouseMove(e: React.MouseEvent) {
+  function moveFromPoint(clientX: number, clientY: number) {
     if (!isDragging || !containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 100;
-    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    const x = ((clientX - rect.left) / rect.width) * 100;
+    const y = ((clientY - rect.top) / rect.height) * 100;
 
     const clampedX = Math.max(0, Math.min(100, x));
     const clampedY = Math.max(0, Math.min(100, y));
@@ -110,6 +110,15 @@ export default function WebcamPdModal({ isOpen, onClose, onApply }: WebcamPdModa
     }
   }
 
+  function handleMouseMove(e: React.MouseEvent) {
+    moveFromPoint(e.clientX, e.clientY);
+  }
+
+  function handleTouchMove(e: React.TouchEvent) {
+    const t = e.touches[0];
+    if (t) moveFromPoint(t.clientX, t.clientY);
+  }
+
   function handleMouseUp() {
     setIsDragging(null);
   }
@@ -125,6 +134,8 @@ export default function WebcamPdModal({ isOpen, onClose, onApply }: WebcamPdModa
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleMouseUp}
     >
       <div className="bg-white border border-line rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col">
         {/* Modal Header */}
@@ -205,18 +216,22 @@ export default function WebcamPdModal({ isOpen, onClose, onApply }: WebcamPdModa
               <div
                 className="absolute left-0 top-0 bottom-0 w-3 cursor-ew-resize bg-accent/25 hover:bg-accent/50"
                 onMouseDown={() => setIsDragging('card-left')}
+                onTouchStart={() => setIsDragging('card-left')}
               />
               <div
                 className="absolute right-0 top-0 bottom-0 w-3 cursor-ew-resize bg-accent/25 hover:bg-accent/50"
                 onMouseDown={() => setIsDragging('card-right')}
+                onTouchStart={() => setIsDragging('card-right')}
               />
               <div
                 className="absolute top-0 left-0 right-0 h-3 cursor-ns-resize bg-accent/25 hover:bg-accent/50"
                 onMouseDown={() => setIsDragging('card-top')}
+                onTouchStart={() => setIsDragging('card-top')}
               />
               <div
                 className="absolute bottom-0 left-0 right-0 h-3 cursor-ns-resize bg-accent/25 hover:bg-accent/50"
                 onMouseDown={() => setIsDragging('card-bottom')}
+                onTouchStart={() => setIsDragging('card-bottom')}
               />
             </div>
           )}
@@ -232,6 +247,7 @@ export default function WebcamPdModal({ isOpen, onClose, onApply }: WebcamPdModa
                 className="absolute w-8 h-8 -ml-4 -mt-4 cursor-crosshair group"
                 style={{ left: `${pupilLeft}%`, top: `${pupilY}%` }}
                 onMouseDown={() => setIsDragging('pupil-left')}
+                onTouchStart={() => setIsDragging('pupil-left')}
               >
                 {/* Outer Ring */}
                 <div className="w-full h-full rounded-full border-2 border-success animate-pulse" />
@@ -249,6 +265,7 @@ export default function WebcamPdModal({ isOpen, onClose, onApply }: WebcamPdModa
                 className="absolute w-8 h-8 -ml-4 -mt-4 cursor-crosshair group"
                 style={{ left: `${pupilRight}%`, top: `${pupilY}%` }}
                 onMouseDown={() => setIsDragging('pupil-right')}
+                onTouchStart={() => setIsDragging('pupil-right')}
               >
                 {/* Outer Ring */}
                 <div className="w-full h-full rounded-full border-2 border-success animate-pulse" />
@@ -268,6 +285,7 @@ export default function WebcamPdModal({ isOpen, onClose, onApply }: WebcamPdModa
                   top: `${pupilY}%`,
                 }}
                 onMouseDown={() => setIsDragging('pupil-y')}
+                onTouchStart={() => setIsDragging('pupil-y')}
               >
                 <span className="bg-success text-white font-mono text-[9px] font-bold px-2 py-0.5 rounded-full -mt-0.5 z-10 shadow">
                   PD: {roundedPd}mm

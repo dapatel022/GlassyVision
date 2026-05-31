@@ -169,19 +169,35 @@ export default function VirtualTryOn({ isOpen, onClose, product }: VirtualTryOnP
     }
   }
 
-  // Interactive Dragging Handlers (for static model overlay)
-  function handleMouseDown(e: React.MouseEvent) {
+  // Interactive Dragging Handlers (for static model overlay). Shared by mouse
+  // and touch so the overlay is draggable on mobile (the primary audience).
+  function startDrag(clientX: number, clientY: number) {
     if (mode !== 'photo') return;
     setIsDragging(true);
-    dragStart.current = { x: e.clientX - position.x, y: e.clientY - position.y };
+    dragStart.current = { x: clientX - position.x, y: clientY - position.y };
+  }
+
+  function moveDrag(clientX: number, clientY: number) {
+    if (!isDragging) return;
+    setPosition({ x: clientX - dragStart.current.x, y: clientY - dragStart.current.y });
+  }
+
+  function handleMouseDown(e: React.MouseEvent) {
+    startDrag(e.clientX, e.clientY);
   }
 
   function handleMouseMove(e: React.MouseEvent) {
-    if (!isDragging) return;
-    setPosition({
-      x: e.clientX - dragStart.current.x,
-      y: e.clientY - dragStart.current.y
-    });
+    moveDrag(e.clientX, e.clientY);
+  }
+
+  function handleTouchStart(e: React.TouchEvent) {
+    const t = e.touches[0];
+    if (t) startDrag(t.clientX, t.clientY);
+  }
+
+  function handleTouchMove(e: React.TouchEvent) {
+    const t = e.touches[0];
+    if (t) moveDrag(t.clientX, t.clientY);
   }
 
   function handleMouseUp() {
@@ -201,6 +217,8 @@ export default function VirtualTryOn({ isOpen, onClose, product }: VirtualTryOnP
       className="fixed inset-0 z-50 flex items-center justify-center bg-ink/75 backdrop-blur-sm p-4"
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleMouseUp}
     >
       <div className="bg-white border border-line rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col h-[90vh] md:h-auto">
         {/* Header */}
@@ -223,8 +241,9 @@ export default function VirtualTryOn({ isOpen, onClose, product }: VirtualTryOnP
           {/* Main Viewport */}
           <div
             ref={containerRef}
-            className="flex-1 relative aspect-[4/3] md:aspect-square bg-black overflow-hidden flex items-center justify-center cursor-crosshair"
+            className="flex-1 relative aspect-[4/3] md:aspect-square bg-black overflow-hidden flex items-center justify-center cursor-crosshair touch-none"
             onMouseDown={handleMouseDown}
+            onTouchStart={handleTouchStart}
           >
             {mode === 'camera' ? (
               <video

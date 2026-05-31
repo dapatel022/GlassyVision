@@ -2,6 +2,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getCurrentUser, isLabRole } from '@/lib/auth/middleware';
+import { createFulfillment } from '@/lib/commerce/shopify-admin';
 
 export interface CreateShipmentInput {
   jobId: string;
@@ -109,6 +110,31 @@ export async function createShipment(input: CreateShipmentInput): Promise<{ succ
     .from('orders')
     .update({ fulfillment_status: 'shipped' })
     .eq('id', wo.order_id);
+
+  // Best-effort: reflect the shipment in Shopify so the customer receives
+  // Shopify's fulfillment + tracking notification. A Shopify failure must never
+  // undo the shipment we've already recorded locally — log and move on.
+  if (process.env.SHOPIFY_STORE_DOMAIN && process.env.SHOPIFY_ADMIN_ACCESS_TOKEN) {
+    try {
+      const { data: orderRow } = await supabase
+        .from('orders')
+        .select('shopify_order_id')
+        .eq('id', wo.order_id)
+        .single();
+      const { data: lineItems } = await supabase
+        .from('order_line_items')
+        .select('shopify_line_item_id')
+        .eq('order_id', wo.order_id);
+      if (orderRow?.shopify_order_id) {
+        const lineItemIds = (lineItems ?? [])
+          .map((li) => li.shopify_line_item_id)
+          .filter((id): id is number => typeof id === 'number');
+        await createFulfillment(orderRow.shopify_order_id, input.trackingNumber, input.carrier, lineItemIds);
+      }
+    } catch (e) {
+      console.error('[create-shipment] Shopify fulfillment push failed (local shipment already recorded)', e);
+    }
+  }
 
   return { success: true };
 }
