@@ -78,8 +78,25 @@ export async function POST(request: NextRequest) {
         // they are mutually exclusive. Add-on confirmation is amount-verified and
         // only advances a still-`pending_payment` redemption, so a replay is safe.
         if (syncResult.redemptionId && financialStatus === 'paid' && shopifyOrderId) {
-          const paidAmount = Number((payload as { total_price?: number | string }).total_price ?? 0);
-          await confirmAddonPayment(syncResult.redemptionId, paidAmount, shopifyOrderId, supabase);
+          // Reconcile against the PRODUCT subtotal (line-items price, excludes
+          // shipping/tax) and the paid order's line-item variant ids — never the
+          // gross total. `subtotal_price` is Shopify's line-items subtotal (post
+          // line-item discount, pre shipping/tax), mirrored to `orders.subtotal`.
+          const orderPayload = payload as {
+            subtotal_price?: number | string;
+            line_items?: Array<{ variant_id?: number | null; quantity?: number | string }>;
+          };
+          const paidSubtotal = Number(orderPayload.subtotal_price ?? 0);
+          const lineItems = (orderPayload.line_items ?? []).map((li) => ({
+            variant_id: li.variant_id ?? null,
+            quantity: Number(li.quantity ?? 0),
+          }));
+          await confirmAddonPayment(
+            syncResult.redemptionId,
+            { paidSubtotal, lineItems },
+            shopifyOrderId,
+            supabase,
+          );
         } else if (shopifyOrderId) {
           // After the order is mirrored into Supabase, attempt subscription
           // provisioning. The helper is internally paid-gated and idempotent

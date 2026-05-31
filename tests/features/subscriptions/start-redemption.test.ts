@@ -216,4 +216,23 @@ describe('startRedemption', () => {
     // no synthesized order yet — that happens on add-on payment confirmation
     expect(createRedemptionFulfillmentOrder).not.toHaveBeenCalled();
   });
+
+  it('persists required surcharge variant ids on lens_config for webhook reconciliation', async () => {
+    createCart.mockResolvedValue({ checkoutUrl: 'https://shop/checkout/abc' });
+    const spies = install({
+      meta: { subscription_tier: 'premium', subscription_surcharge_variant_id: 9001 },
+      addonOptions: [{ key: 'progressive', shopify_variant_id: 8001, price: 40 }],
+    });
+    const { startRedemption } = await import('@/features/subscriptions/actions/start-redemption');
+    await startRedemption({ ...baseInput, addonKeys: ['progressive'] });
+    // The atomic claim must stamp the premium-frame surcharge variant + each
+    // selected add-on variant onto lens_config, preserving existing lens fields.
+    const claimPatch = spies.claimUpdate.mock.calls[0][0] as { lens_config: Record<string, unknown> };
+    expect(claimPatch.lens_config).toEqual(
+      expect.objectContaining({
+        lens_type: 'single_vision',
+        addon_variant_ids: [9001, 8001],
+      }),
+    );
+  });
 });

@@ -108,13 +108,30 @@ export async function startRedemption(
 
   const hasSurcharge = !!surchargeVariantId || addons.some((a) => a.shopify_variant_id);
 
+  // Required surcharge variant ids — persisted onto the redemption so the
+  // `orders/paid` webhook can reconcile the paid order's line items against the
+  // EXACT variants we required (each pinning its real Shopify-enforced price).
+  // Stored under the existing lens_config jsonb to avoid a new migration; the
+  // existing lens fields are preserved.
+  const addonVariantIds: number[] = [
+    ...(surchargeVariantId ? [Number(surchargeVariantId)] : []),
+    ...addons
+      .map((a) => a.shopify_variant_id)
+      .filter((id): id is number => id != null)
+      .map((id) => Number(id)),
+  ];
+  const lensConfigWithVariants: Record<string, unknown> = {
+    ...input.lensConfig,
+    addon_variant_ids: addonVariantIds,
+  };
+
   // 3. Atomic claim — only succeeds if the slot is still available AND unlocked.
   const { data: claimed } = await supabase
     .from('subscription_redemptions')
     .update({
       status: 'locked',
       frame_variant_id: input.frameVariantId,
-      lens_config: input.lensConfig as never,
+      lens_config: lensConfigWithVariants as never,
       ship_to: input.shipTo as never,
       expected_surcharge: expectedSurcharge,
       is_premium: isPremium,

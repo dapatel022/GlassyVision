@@ -24,7 +24,9 @@ function install(o: Opts = {}) {
           membership_id: 'mem-1',
           expected_surcharge: 40,
           frame_variant_id: 222,
-          lens_config: { lens_type: 'single_vision' },
+          // Two required surcharge variants: the premium-frame surcharge (9001)
+          // and the selected add-on (8001).
+          lens_config: { lens_type: 'single_vision', addon_variant_ids: [9001, 8001] },
           ship_to: { country_code: 'US' },
         };
   const membership =
@@ -47,6 +49,12 @@ function install(o: Opts = {}) {
   return { redemptionUpdate };
 }
 
+// A paid add-on order that contains BOTH required surcharge variants at qty 1.
+const fullLineItems = [
+  { variant_id: 9001, quantity: 1 },
+  { variant_id: 8001, quantity: 1 },
+];
+
 beforeEach(() => {
   from.mockReset();
   createRedemptionFulfillmentOrder.mockReset();
@@ -54,10 +62,15 @@ beforeEach(() => {
 });
 
 describe('confirmAddonPayment', () => {
-  it('advances when paid amount >= expected_surcharge', async () => {
+  it('advances when subtotal >= expected AND all required variants are present', async () => {
     const { redemptionUpdate } = install();
     const { confirmAddonPayment } = await import('@/features/subscriptions/confirm-addon-payment');
-    const res = await confirmAddonPayment('slot-1', 40, 7777, { from } as never);
+    const res = await confirmAddonPayment(
+      'slot-1',
+      { paidSubtotal: 40, lineItems: fullLineItems },
+      7777,
+      { from } as never,
+    );
     expect(res.advanced).toBe(true);
     expect(createRedemptionFulfillmentOrder).toHaveBeenCalled();
     expect(redemptionUpdate).toHaveBeenCalledWith(
@@ -69,11 +82,65 @@ describe('confirmAddonPayment', () => {
     );
   });
 
-  it('does NOT advance when paid amount < expected_surcharge', async () => {
+  it('does NOT advance when a required variant is missing (even if subtotal >= expected)', async () => {
     const { redemptionUpdate } = install();
     const { confirmAddonPayment } = await import('@/features/subscriptions/confirm-addon-payment');
-    const res = await confirmAddonPayment('slot-1', 1, 7777, { from } as never);
+    // Only the cheap add-on (8001) is present; the premium surcharge (9001) is missing,
+    // yet the buyer "paid" a subtotal that meets the threshold via the cheap item.
+    const res = await confirmAddonPayment(
+      'slot-1',
+      { paidSubtotal: 100, lineItems: [{ variant_id: 8001, quantity: 1 }] },
+      7777,
+      { from } as never,
+    );
     expect(res.advanced).toBe(false);
+    expect(res.reason).toBe('missing_required_variant');
+    expect(createRedemptionFulfillmentOrder).not.toHaveBeenCalled();
+    expect(redemptionUpdate).not.toHaveBeenCalled();
+  });
+
+  it('does NOT advance when a required variant has quantity 0 / absent quantity', async () => {
+    install();
+    const { confirmAddonPayment } = await import('@/features/subscriptions/confirm-addon-payment');
+    const res = await confirmAddonPayment(
+      'slot-1',
+      { paidSubtotal: 100, lineItems: [{ variant_id: 9001, quantity: 1 }, { variant_id: 8001, quantity: 0 }] },
+      7777,
+      { from } as never,
+    );
+    expect(res.advanced).toBe(false);
+    expect(res.reason).toBe('missing_required_variant');
+    expect(createRedemptionFulfillmentOrder).not.toHaveBeenCalled();
+  });
+
+  it('does NOT advance when product subtotal < expected_surcharge', async () => {
+    const { redemptionUpdate } = install();
+    const { confirmAddonPayment } = await import('@/features/subscriptions/confirm-addon-payment');
+    const res = await confirmAddonPayment(
+      'slot-1',
+      { paidSubtotal: 1, lineItems: fullLineItems },
+      7777,
+      { from } as never,
+    );
+    expect(res.advanced).toBe(false);
+    expect(res.reason).toBe('amount_too_low');
+    expect(createRedemptionFulfillmentOrder).not.toHaveBeenCalled();
+    expect(redemptionUpdate).not.toHaveBeenCalled();
+  });
+
+  it('does NOT advance when shipping/tax inflate the gross total but product subtotal < expected', async () => {
+    const { redemptionUpdate } = install();
+    const { confirmAddonPayment } = await import('@/features/subscriptions/confirm-addon-payment');
+    // Gross total (e.g. 45 with 30 shipping + tax) would have passed the old check,
+    // but the product subtotal (15) is below the 40 expected surcharge.
+    const res = await confirmAddonPayment(
+      'slot-1',
+      { paidSubtotal: 15, lineItems: fullLineItems },
+      7777,
+      { from } as never,
+    );
+    expect(res.advanced).toBe(false);
+    expect(res.reason).toBe('amount_too_low');
     expect(createRedemptionFulfillmentOrder).not.toHaveBeenCalled();
     expect(redemptionUpdate).not.toHaveBeenCalled();
   });
@@ -81,16 +148,26 @@ describe('confirmAddonPayment', () => {
   it('is a no-op for an unknown redemption id', async () => {
     install({ redemption: null });
     const { confirmAddonPayment } = await import('@/features/subscriptions/confirm-addon-payment');
-    const res = await confirmAddonPayment('nope', 999, 7777, { from } as never);
+    const res = await confirmAddonPayment('nope', { paidSubtotal: 999, lineItems: fullLineItems }, 7777, { from } as never);
     expect(res.advanced).toBe(false);
+    expect(res.reason).toBe('unknown_redemption');
     expect(createRedemptionFulfillmentOrder).not.toHaveBeenCalled();
   });
 
   it('is a no-op when the redemption is not pending_payment', async () => {
-    install({ redemption: { id: 'slot-1', status: 'awaiting_rx', membership_id: 'mem-1', expected_surcharge: 40 } });
+    install({
+      redemption: {
+        id: 'slot-1',
+        status: 'awaiting_rx',
+        membership_id: 'mem-1',
+        expected_surcharge: 40,
+        lens_config: { addon_variant_ids: [9001, 8001] },
+      },
+    });
     const { confirmAddonPayment } = await import('@/features/subscriptions/confirm-addon-payment');
-    const res = await confirmAddonPayment('slot-1', 999, 7777, { from } as never);
+    const res = await confirmAddonPayment('slot-1', { paidSubtotal: 999, lineItems: fullLineItems }, 7777, { from } as never);
     expect(res.advanced).toBe(false);
+    expect(res.reason).toBe('not_pending_payment');
     expect(createRedemptionFulfillmentOrder).not.toHaveBeenCalled();
   });
 });
