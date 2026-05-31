@@ -1,3 +1,5 @@
+import { isRxExpired } from '@/lib/rx/expiration';
+
 export interface RxTypedValues {
   odSphere: string;
   odCylinder: string;
@@ -85,25 +87,13 @@ export function validateTypedValues(
   }
 
   if (expirationDate) {
-    const expDate = new Date(expirationDate);
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
-
-    if (expDate < now) {
-      results.push({
-        field: 'expirationDate',
-        passed: false,
-        type: 'error',
-        message: 'This prescription appears to be expired',
-      });
-    } else {
-      results.push({
-        field: 'expirationDate',
-        passed: true,
-        type: 'error',
-        message: '',
-      });
-    }
+    const expired = isRxExpired(expirationDate);
+    results.push({
+      field: 'expirationDate',
+      passed: !expired,
+      type: 'error',
+      message: expired ? 'This prescription appears to be expired' : '',
+    });
   }
 
   return results;

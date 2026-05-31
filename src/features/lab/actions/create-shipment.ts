@@ -3,6 +3,8 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getCurrentUser, isLabRole } from '@/lib/auth/middleware';
 import { createFulfillment } from '@/lib/commerce/shopify-admin';
+import { isRxExpired } from '@/lib/rx/expiration';
+import { isDispensableDestination } from '@/lib/rx/market';
 
 export interface CreateShipmentInput {
   jobId: string;
@@ -10,8 +12,6 @@ export interface CreateShipmentInput {
   trackingNumber: string;
   trackingUrl?: string;
 }
-
-const DISPENSABLE_COUNTRIES = ['us', 'ca'];
 
 /**
  * Creates the outbound shipment for a completed lab job and marks the order
@@ -49,11 +49,19 @@ export async function createShipment(input: CreateShipmentInput): Promise<{ succ
 
   const { data: rxFile } = await supabase
     .from('rx_files')
-    .select('id, storage_path, deleted_at')
+    .select('id, storage_path, deleted_at, rx_expiration_date')
     .eq('id', wo.rx_file_id)
     .single();
   if (!rxFile || !rxFile.storage_path || rxFile.deleted_at) {
     return { success: false, error: 'Cannot ship: Rx image is missing or has been removed' };
+  }
+
+  // FTC Eyeglass Rule: a valid, UNEXPIRED Rx must be on file at dispense.
+  // Expiration is also checked at intake, but a prescription can lapse in the
+  // weeks/months between upload and shipment (acute for subscription pairs
+  // redeemed late in the term) — re-check here so a stale Rx never ships.
+  if (isRxExpired(rxFile.rx_expiration_date)) {
+    return { success: false, error: 'Cannot ship: the prescription on file has expired' };
   }
 
   const { data: reviews } = await supabase
@@ -77,10 +85,13 @@ export async function createShipment(input: CreateShipmentInput): Promise<{ succ
 
   const { data: order } = await supabase
     .from('orders')
-    .select('billing_country')
+    .select('billing_country, shipping_address')
     .eq('id', wo.order_id)
     .single();
-  if (!order || !order.billing_country || !DISPENSABLE_COUNTRIES.includes(order.billing_country.toLowerCase())) {
+  // Gate on the actual SHIP-TO destination, not billing country: a US-billed
+  // customer can ship a pair to a non-dispensable country (e.g. the UK, where
+  // Rx dispensing requires an optician we don't yet have).
+  if (!order || !isDispensableDestination(order.shipping_address as { country_code?: string } | null, order.billing_country)) {
     return { success: false, error: 'Cannot ship: Rx dispensing is restricted to US/CA in phase 1' };
   }
 

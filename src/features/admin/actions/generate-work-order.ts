@@ -2,6 +2,8 @@
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import type { Database, Json } from '@/lib/supabase/types';
+import { isRxExpired } from '@/lib/rx/expiration';
+import { isDispensableDestination } from '@/lib/rx/market';
 
 type LensType = Database['public']['Enums']['lens_type'];
 type LensMaterial = Database['public']['Enums']['lens_material'];
@@ -31,7 +33,7 @@ export async function generateWorkOrder(rxFileId: string): Promise<GenerateWorkO
   const { data: rxFile, error: fetchError } = await supabase
     .from('rx_files')
     .select(`
-      id, order_id, line_item_id, storage_path, deleted_at,
+      id, order_id, line_item_id, storage_path, deleted_at, rx_expiration_date,
       typed_od_sphere, typed_od_cylinder, typed_od_axis, typed_od_add,
       typed_os_sphere, typed_os_cylinder, typed_os_axis, typed_os_add,
       typed_pd, typed_pd_type,
@@ -58,6 +60,23 @@ export async function generateWorkOrder(rxFileId: string): Promise<GenerateWorkO
   // against a typed-only prescription ever producing a work order.
   if (!rxFile.storage_path || rxFile.deleted_at) {
     return { success: false, error: 'Cannot generate work order: Rx image file is missing' };
+  }
+
+  // FTC Eyeglass Rule: never cut lenses against an expired prescription. The
+  // shipment gate re-checks this too, but blocking here avoids wasting lab work.
+  if (isRxExpired(rxFile.rx_expiration_date)) {
+    return { success: false, error: 'Cannot generate work order: the prescription has expired' };
+  }
+
+  // Rule 6: never start lab work for a non-dispensable destination (e.g. UK Rx).
+  // The shipment gate re-checks this, but blocking here avoids wasted lab effort.
+  const { data: order } = await supabase
+    .from('orders')
+    .select('billing_country, shipping_address')
+    .eq('id', rxFile.order_id)
+    .single();
+  if (!order || !isDispensableDestination(order.shipping_address as { country_code?: string } | null, order.billing_country)) {
+    return { success: false, error: 'Cannot generate work order: Rx dispensing is restricted to US/CA in phase 1' };
   }
 
   if (!rxFile.line_item_id) {

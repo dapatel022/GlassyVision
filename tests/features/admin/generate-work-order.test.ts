@@ -60,6 +60,7 @@ describe('generateWorkOrder', () => {
 
     mockFrom.mockImplementation((table: string) => {
       if (table === 'rx_files') return { select: buildRxFileRead('approved') };
+      if (table === 'orders') return { select: () => ({ eq: () => ({ single: () => Promise.resolve({ data: { billing_country: 'us', shipping_address: { country_code: 'US' } }, error: null }) }) }) };
       if (table === 'work_orders') return {
         insert: workOrderInsert,
         select: existingCountSelect,
@@ -77,6 +78,23 @@ describe('generateWorkOrder', () => {
     if (result.success) {
       expect(result.workOrderId).toBe('wo-1');
     }
+  });
+
+  it('refuses to generate a work order for a non-US/CA shipping destination', async () => {
+    const workOrderInsert = vi.fn();
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'rx_files') return { select: buildRxFileRead('approved') };
+      if (table === 'orders') return { select: () => ({ eq: () => ({ single: () => Promise.resolve({ data: { billing_country: 'us', shipping_address: { country_code: 'GB' } }, error: null }) }) }) };
+      if (table === 'work_orders') return { insert: workOrderInsert };
+      return {};
+    });
+
+    const { generateWorkOrder } = await import('@/features/admin/actions/generate-work-order');
+    const result = await generateWorkOrder('rx-1');
+
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error).toMatch(/US\/CA|dispens|restrict/i);
+    expect(workOrderInsert).not.toHaveBeenCalled();
   });
 
   it('refuses when rx has no approved review', async () => {
@@ -169,6 +187,38 @@ describe('generateWorkOrder', () => {
     const result = await generateWorkOrder('rx-1');
 
     expect(result.success).toBe(false);
+    expect(workOrderInsert).not.toHaveBeenCalled();
+  });
+
+  it('refuses when the Rx is expired (no lens cut against a stale prescription)', async () => {
+    const workOrderInsert = vi.fn();
+    const rxFileSelect = vi.fn(() => ({
+      eq: vi.fn(() => ({
+        single: vi.fn(() => Promise.resolve({
+          data: {
+            id: 'rx-1', order_id: 'order-1', line_item_id: 'line-1', storage_path: 'rx/1.jpg', deleted_at: null,
+            rx_expiration_date: '2020-01-01',
+            typed_od_sphere: '-2.00', typed_od_cylinder: null, typed_od_axis: null, typed_od_add: null,
+            typed_os_sphere: null, typed_os_cylinder: null, typed_os_axis: null, typed_os_add: null,
+            typed_pd: '63', typed_pd_type: 'binocular',
+            rx_reviews: [{ decision: 'approved', reviewed_at: '2026-05-01T00:00:00Z' }],
+            order_line_items: { id: 'line-1', sku: 'GV-1', product_title: 'F', frame_shape: null, frame_color: null, frame_size: null },
+          },
+          error: null,
+        })),
+      })),
+    }));
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'rx_files') return { select: rxFileSelect };
+      if (table === 'work_orders') return { insert: workOrderInsert };
+      return {};
+    });
+
+    const { generateWorkOrder } = await import('@/features/admin/actions/generate-work-order');
+    const result = await generateWorkOrder('rx-1');
+
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error).toMatch(/expired/i);
     expect(workOrderInsert).not.toHaveBeenCalled();
   });
 });
