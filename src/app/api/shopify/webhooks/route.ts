@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyShopifyWebhook } from '@/lib/utils/hmac';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { syncShopifyOrder } from '@/lib/commerce/sync';
+import { syncShopifyOrder, type ShopifyOrderPayload } from '@/lib/commerce/sync';
+import type { Json } from '@/lib/supabase/types';
 
 export async function POST(request: NextRequest) {
   const body = await request.text();
@@ -15,44 +16,59 @@ export async function POST(request: NextRequest) {
   }
 
   const supabase = createAdminClient();
-  const payload = JSON.parse(body);
 
-  // Idempotency check to avoid double-processing
-  if (shopifyEventId) {
-    const { data: existing } = await supabase
-      .from('webhook_events')
-      .select('id')
-      .eq('shopify_event_id', shopifyEventId)
-      .maybeSingle();
-
-    if (existing) {
-      return NextResponse.json({ status: 'already_processed' });
-    }
+  let payload: Record<string, unknown>;
+  try {
+    payload = JSON.parse(body);
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  // Log the inbound event
-  const { data: event } = await supabase
+  const eventId = shopifyEventId || crypto.randomUUID();
+
+  // Atomic idempotency: insert the event row and rely on the unique constraint
+  // on shopify_event_id instead of a check-then-act SELECT (Shopify delivers
+  // at-least-once, so two concurrent deliveries would both pass a SELECT).
+  const { data: inserted, error: insertErr } = await supabase
     .from('webhook_events')
-    .insert({
-      shopify_event_id: shopifyEventId || crypto.randomUUID(),
-      topic,
-      payload,
-    })
+    .insert({ shopify_event_id: eventId, topic, payload: payload as Json })
     .select('id')
     .single();
+
+  let eventRowId: string | null = inserted?.id ?? null;
+
+  if (insertErr) {
+    if (insertErr.code === '23505') {
+      // Already received. Only reprocess if the prior attempt did not complete
+      // (processed_at is null) — otherwise this is a true duplicate.
+      const { data: existing } = await supabase
+        .from('webhook_events')
+        .select('id, processed_at')
+        .eq('shopify_event_id', eventId)
+        .maybeSingle();
+      if (!existing || existing.processed_at) {
+        return NextResponse.json({ status: 'already_processed' });
+      }
+      eventRowId = existing.id;
+    } else {
+      // Unexpected DB failure — return 5xx so Shopify retries the delivery.
+      console.error('[webhook] failed to record event', insertErr);
+      return NextResponse.json({ error: 'event log failed' }, { status: 500 });
+    }
+  }
 
   try {
     switch (topic) {
       case 'orders/create':
       case 'orders/updated': {
-        const syncResult = await syncShopifyOrder(payload, supabase);
+        const syncResult = await syncShopifyOrder(payload as ShopifyOrderPayload, supabase);
         if (!syncResult.success) {
           throw new Error(`Sync failed: ${syncResult.error}`);
         }
         break;
       }
       case 'orders/cancelled': {
-        const shopifyOrderId = payload.id;
+        const shopifyOrderId = (payload as { id?: number }).id;
         if (shopifyOrderId) {
           const { data: order } = await supabase
             .from('orders')
@@ -90,8 +106,9 @@ export async function POST(request: NextRequest) {
         break;
       }
       case 'products/update': {
-        const shopifyProductId = payload.id;
-        const variants = payload.variants || [];
+        const productPayload = payload as { id?: number; variants?: Array<{ id: number; sku?: string }> };
+        const shopifyProductId = productPayload.id;
+        const variants = productPayload.variants || [];
         if (shopifyProductId && Array.isArray(variants)) {
           for (const variant of variants) {
             const shopifyVariantId = variant.id;
@@ -116,25 +133,27 @@ export async function POST(request: NextRequest) {
     }
 
     // Mark as processed successfully
-    if (event) {
+    if (eventRowId) {
       await supabase
         .from('webhook_events')
         .update({ processed_at: new Date().toISOString() })
-        .eq('id', event.id);
+        .eq('id', eventRowId);
     }
 
     return NextResponse.json({ status: 'ok' });
   } catch (error) {
-    if (event) {
+    if (eventRowId) {
       await supabase
         .from('webhook_events')
         .update({
           processing_error: error instanceof Error ? error.message : 'Unknown error',
         })
-        .eq('id', event.id);
+        .eq('id', eventRowId);
     }
 
-    // Return 200 to acknowledge receipt to Shopify, logging the error internally
-    return NextResponse.json({ status: 'error_logged' });
+    // Return 5xx so Shopify retries the delivery (its built-in backoff is our
+    // retry mechanism). The row is left with processed_at null + an error,
+    // which also serves as the dead-letter record for manual replay.
+    return NextResponse.json({ status: 'error' }, { status: 500 });
   }
 }

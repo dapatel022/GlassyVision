@@ -1,10 +1,12 @@
+import { fetchWithRetry } from './fetch-with-retry';
+
 const STOREFRONT_API_VERSION = '2025-01';
 
 export async function storefrontFetch<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
   const domain = process.env.SHOPIFY_STORE_DOMAIN!;
   const token = process.env.SHOPIFY_STOREFRONT_ACCESS_TOKEN!;
 
-  const response = await fetch(
+  const response = await fetchWithRetry(
     `https://${domain}/api/${STOREFRONT_API_VERSION}/graphql.json`,
     {
       method: 'POST',

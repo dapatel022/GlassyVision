@@ -1,3 +1,5 @@
+import { fetchWithRetry } from './fetch-with-retry';
+
 const ADMIN_API_VERSION = '2025-01';
 
 export async function adminFetch<T>(
@@ -8,7 +10,7 @@ export async function adminFetch<T>(
   const token = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN!;
   const method = options.method || 'GET';
 
-  const response = await fetch(
+  const response = await fetchWithRetry(
     `https://${domain}/admin/api/${ADMIN_API_VERSION}/${endpoint}`,
     {
       method,

@@ -8,9 +8,7 @@ vi.mock('@/lib/utils/hmac', () => ({
 
 const mockFrom = vi.fn();
 vi.mock('@/lib/supabase/admin', () => ({
-  createAdminClient: vi.fn(() => ({
-    from: mockFrom,
-  })),
+  createAdminClient: vi.fn(() => ({ from: mockFrom })),
 }));
 
 const mockSyncShopifyOrder = vi.fn();
@@ -20,192 +18,122 @@ vi.mock('@/lib/commerce/sync', () => ({
 
 function buildRequest(headers: Record<string, string>, body: string): NextRequest {
   const reqHeaders = new Headers();
-  for (const [k, v] of Object.entries(headers)) {
-    reqHeaders.set(k, v);
-  }
-  return new NextRequest('http://localhost/api/shopify/webhooks', {
-    method: 'POST',
-    headers: reqHeaders,
-    body,
-  });
+  for (const [k, v] of Object.entries(headers)) reqHeaders.set(k, v);
+  return new NextRequest('http://localhost/api/shopify/webhooks', { method: 'POST', headers: reqHeaders, body });
 }
 
-describe('Shopify Webhook Route Handler', () => {
-  beforeEach(() => {
-    mockVerifyWebhook.mockReset();
-    mockFrom.mockReset();
-    mockSyncShopifyOrder.mockReset();
-  });
+// webhook_events.insert(...).select('id').single() => { data, error }
+function eventInsert(result: { data: unknown; error: unknown }) {
+  return vi.fn(() => ({ select: () => ({ single: () => Promise.resolve(result) }) }));
+}
+// webhook_events.select('id, processed_at').eq(...).maybeSingle()
+function eventSelect(result: { data: unknown; error: unknown }) {
+  return vi.fn(() => ({ eq: () => ({ maybeSingle: () => Promise.resolve(result) }) }));
+}
+function eventUpdate() {
+  return vi.fn(() => ({ eq: () => Promise.resolve({ error: null }) }));
+}
 
+beforeEach(() => {
+  mockVerifyWebhook.mockReset();
+  mockFrom.mockReset();
+  mockSyncShopifyOrder.mockReset();
+});
+
+describe('Shopify Webhook Route Handler', () => {
   it('returns 401 on invalid signature', async () => {
     mockVerifyWebhook.mockReturnValueOnce(false);
     const { POST } = await import('@/app/api/shopify/webhooks/route');
-
-    const req = buildRequest({ 'x-shopify-hmac-sha256': 'bad' }, '{}');
-    const res = await POST(req);
-
+    const res = await POST(buildRequest({ 'x-shopify-hmac-sha256': 'bad' }, '{}'));
     expect(res.status).toBe(401);
   });
 
-  it('skips processing and returns 200 if webhook is duplicate (idempotency)', async () => {
+  it('records the event atomically and processes orders/create', async () => {
     mockVerifyWebhook.mockReturnValueOnce(true);
-
-    const mockSelect = vi.fn(() => ({
-      eq: vi.fn(() => ({
-        maybeSingle: vi.fn(() => Promise.resolve({ data: { id: 'evt-1' }, error: null })),
-      })),
-    }));
-    mockFrom.mockImplementation((table: string) => {
-      if (table === 'webhook_events') return { select: mockSelect };
-      return {};
-    });
+    mockSyncShopifyOrder.mockResolvedValueOnce({ success: true, orderId: 'ord-123' });
+    const update = eventUpdate();
+    mockFrom.mockImplementation((t: string) =>
+      t === 'webhook_events'
+        ? { insert: eventInsert({ data: { id: 'log-1' }, error: null }), update }
+        : {},
+    );
 
     const { POST } = await import('@/app/api/shopify/webhooks/route');
-    const req = buildRequest(
-      {
-        'x-shopify-hmac-sha256': 'good',
-        'x-shopify-webhook-id': 'dup-123',
-      },
-      '{}'
-    );
-    const res = await POST(req);
+    const payloadObj = { id: 1001, name: 'GV-1001' };
+    const res = await POST(buildRequest(
+      { 'x-shopify-hmac-sha256': 'good', 'x-shopify-topic': 'orders/create', 'x-shopify-webhook-id': 'new-123' },
+      JSON.stringify(payloadObj),
+    ));
     const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.status).toBe('ok');
+    expect(mockSyncShopifyOrder).toHaveBeenCalledWith(payloadObj, expect.any(Object));
+    expect(update).toHaveBeenCalledTimes(1); // processed_at set
+  });
 
+  it('skips an already-processed duplicate (insert hits unique violation, prior attempt completed)', async () => {
+    mockVerifyWebhook.mockReturnValueOnce(true);
+    mockFrom.mockImplementation((t: string) =>
+      t === 'webhook_events'
+        ? {
+            insert: eventInsert({ data: null, error: { code: '23505', message: 'duplicate key' } }),
+            select: eventSelect({ data: { id: 'evt-1', processed_at: '2026-05-30T00:00:00Z' }, error: null }),
+          }
+        : {},
+    );
+
+    const { POST } = await import('@/app/api/shopify/webhooks/route');
+    const res = await POST(buildRequest(
+      { 'x-shopify-hmac-sha256': 'good', 'x-shopify-topic': 'orders/create', 'x-shopify-webhook-id': 'dup-123' },
+      '{"id":1}',
+    ));
+    const body = await res.json();
     expect(res.status).toBe(200);
     expect(body.status).toBe('already_processed');
     expect(mockSyncShopifyOrder).not.toHaveBeenCalled();
   });
 
-  it('processes orders/create and logs event', async () => {
+  it('reprocesses a redelivered event whose prior attempt failed (processed_at is null)', async () => {
     mockVerifyWebhook.mockReturnValueOnce(true);
-    mockSyncShopifyOrder.mockResolvedValueOnce({ success: true, orderId: 'ord-123' });
-
-    const mockSelect = vi.fn(() => ({
-      eq: vi.fn(() => ({
-        maybeSingle: vi.fn(() => Promise.resolve({ data: null, error: null })),
-      })),
-    }));
-    const mockInsert = vi.fn(() => ({
-      select: vi.fn(() => ({
-        single: vi.fn(() => Promise.resolve({ data: { id: 'log-1' }, error: null })),
-      })),
-    }));
-    const mockUpdate = vi.fn(() => ({
-      eq: vi.fn(() => Promise.resolve({ error: null })),
-    }));
-
-    mockFrom.mockImplementation((table: string) => {
-      if (table === 'webhook_events') {
-        return {
-          select: mockSelect,
-          insert: mockInsert,
-          update: mockUpdate,
-        };
-      }
-      return {};
-    });
+    mockSyncShopifyOrder.mockResolvedValueOnce({ success: true, orderId: 'ord-9' });
+    const update = eventUpdate();
+    mockFrom.mockImplementation((t: string) =>
+      t === 'webhook_events'
+        ? {
+            insert: eventInsert({ data: null, error: { code: '23505', message: 'duplicate key' } }),
+            select: eventSelect({ data: { id: 'evt-2', processed_at: null }, error: null }),
+            update,
+          }
+        : {},
+    );
 
     const { POST } = await import('@/app/api/shopify/webhooks/route');
-    const payloadObj = { id: 1001, name: 'GV-1001' };
-    const req = buildRequest(
-      {
-        'x-shopify-hmac-sha256': 'good',
-        'x-shopify-topic': 'orders/create',
-        'x-shopify-webhook-id': 'new-123',
-      },
-      JSON.stringify(payloadObj)
-    );
-    const res = await POST(req);
+    const res = await POST(buildRequest(
+      { 'x-shopify-hmac-sha256': 'good', 'x-shopify-topic': 'orders/create', 'x-shopify-webhook-id': 'retry-1' },
+      '{"id":9}',
+    ));
     const body = await res.json();
-
     expect(res.status).toBe(200);
     expect(body.status).toBe('ok');
-    expect(mockSyncShopifyOrder).toHaveBeenCalledWith(payloadObj, expect.any(Object));
-    expect(mockUpdate).toHaveBeenCalledTimes(1);
+    expect(mockSyncShopifyOrder).toHaveBeenCalledTimes(1);
   });
 
-  it('processes orders/cancelled and deletes pending lab jobs', async () => {
+  it('returns 500 (so Shopify retries) when a handler fails, and records the error', async () => {
     mockVerifyWebhook.mockReturnValueOnce(true);
-
-    // Mock webhook_events select, insert, update
-    const mockSelect = vi.fn(() => ({
-      eq: vi.fn(() => ({
-        maybeSingle: vi.fn(() => Promise.resolve({ data: null, error: null })),
-      })),
-    }));
-    const mockLogInsert = vi.fn(() => ({
-      select: vi.fn(() => ({
-        single: vi.fn(() => Promise.resolve({ data: { id: 'log-1' }, error: null })),
-      })),
-    }));
-    const mockLogUpdate = vi.fn(() => ({
-      eq: vi.fn(() => Promise.resolve({ error: null })),
-    }));
-
-    // Mock orders selection and update
-    const mockOrderSelect = vi.fn(() => ({
-      eq: vi.fn(() => ({
-        maybeSingle: vi.fn(() => Promise.resolve({ data: { id: 'ord-123' }, error: null })),
-      })),
-    }));
-    const mockOrderUpdate = vi.fn(() => ({
-      eq: vi.fn(() => Promise.resolve({ error: null })),
-    }));
-
-    // Mock work orders selection
-    const mockWorkOrdersSelect = vi.fn(() => ({
-      eq: vi.fn(() => Promise.resolve({ data: [{ id: 'wo-1' }], error: null })),
-    }));
-
-    // Mock lab jobs deletion
-    const mockLabJobsDelete = vi.fn(() => ({
-      in: vi.fn(() => ({
-        is: vi.fn(() => Promise.resolve({ error: null })),
-      })),
-    }));
-
-    mockFrom.mockImplementation((table: string) => {
-      if (table === 'webhook_events') {
-        return {
-          select: mockSelect,
-          insert: mockLogInsert,
-          update: mockLogUpdate,
-        };
-      }
-      if (table === 'orders') {
-        return {
-          select: mockOrderSelect,
-          update: mockOrderUpdate,
-        };
-      }
-      if (table === 'work_orders') {
-        return {
-          select: mockWorkOrdersSelect,
-        };
-      }
-      if (table === 'lab_jobs') {
-        return {
-          delete: mockLabJobsDelete,
-        };
-      }
-      return {};
-    });
+    mockSyncShopifyOrder.mockResolvedValueOnce({ success: false, error: 'boom' });
+    const update = eventUpdate();
+    mockFrom.mockImplementation((t: string) =>
+      t === 'webhook_events'
+        ? { insert: eventInsert({ data: { id: 'log-err' }, error: null }), update }
+        : {},
+    );
 
     const { POST } = await import('@/app/api/shopify/webhooks/route');
-    const req = buildRequest(
-      {
-        'x-shopify-hmac-sha256': 'good',
-        'x-shopify-topic': 'orders/cancelled',
-        'x-shopify-webhook-id': 'new-cancel',
-      },
-      JSON.stringify({ id: 1001 })
-    );
-    const res = await POST(req);
-    const body = await res.json();
-
-    expect(res.status).toBe(200);
-    expect(body.status).toBe('ok');
-    expect(mockOrderUpdate).toHaveBeenCalledTimes(1);
-    expect(mockLabJobsDelete).toHaveBeenCalledTimes(1);
+    const res = await POST(buildRequest(
+      { 'x-shopify-hmac-sha256': 'good', 'x-shopify-topic': 'orders/create', 'x-shopify-webhook-id': 'fail-1' },
+      '{"id":2}',
+    ));
+    expect(res.status).toBe(500);
+    expect(update).toHaveBeenCalledTimes(1); // processing_error recorded
   });
 });

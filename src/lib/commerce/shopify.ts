@@ -85,13 +85,22 @@ interface CartCreateResponse {
   };
 }
 
+// Mock products are a dev-only convenience. In production we must NEVER serve
+// fake prices/variant IDs (they would reach the real cart/checkout), so on a
+// storefront failure we surface an empty catalog instead.
+const allowMockFallback = () => process.env.NODE_ENV !== 'production';
+
 export async function getProducts(first = 50): Promise<ShopifyProduct[]> {
   try {
     const data = await storefrontFetch<StorefrontResponse>(PRODUCTS_QUERY, { first });
     return data.products.edges.map((e) => mapProduct(e.node));
   } catch (err) {
-    console.warn("Shopify storefront getProducts failed, using mock data", err);
-    return MOCK_PRODUCTS.slice(0, first);
+    if (allowMockFallback()) {
+      console.warn('Shopify storefront getProducts failed, using mock data (non-production)', err);
+      return MOCK_PRODUCTS.slice(0, first);
+    }
+    console.error('Shopify storefront getProducts failed in production', err);
+    return [];
   }
 }
 
@@ -101,8 +110,12 @@ export async function getProductByHandle(handle: string): Promise<ShopifyProduct
     if (!data.productByHandle) return null;
     return mapProduct(data.productByHandle);
   } catch (err) {
-    console.warn("Shopify storefront getProductByHandle failed, using mock data", err);
-    return MOCK_PRODUCTS.find((p) => p.handle === handle) || null;
+    if (allowMockFallback()) {
+      console.warn('Shopify storefront getProductByHandle failed, using mock data (non-production)', err);
+      return MOCK_PRODUCTS.find((p) => p.handle === handle) || null;
+    }
+    console.error('Shopify storefront getProductByHandle failed in production', err);
+    return null;
   }
 }
 
