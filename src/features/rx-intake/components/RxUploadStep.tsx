@@ -2,13 +2,26 @@
 
 import { useState, useRef } from 'react';
 import RxPhotoTips from './RxPhotoTips';
+import type { RxTypedValues } from '@/features/rx-intake/actions/auto-checks';
+
+// Minimal shape of the tesseract.js UMD global loaded at runtime via <script>.
+interface TesseractWorker {
+  recognize: (image: string) => Promise<{ data: { text: string } }>;
+  terminate: () => Promise<void>;
+}
+interface TesseractGlobal {
+  createWorker: (lang: string) => Promise<TesseractWorker>;
+}
+function getTesseract(): TesseractGlobal | undefined {
+  return (window as unknown as { Tesseract?: TesseractGlobal }).Tesseract;
+}
 
 interface RxUploadStepProps {
   orderId: string;
   lineItemId: string;
   token: string;
   exp: number;
-  onUploadComplete: (storagePath: string, mimeType: string) => void;
+  onUploadComplete: (storagePath: string, mimeType: string, parsedValues?: RxTypedValues) => void;
   onSkipLater: () => void;
 }
 
@@ -21,9 +34,56 @@ export default function RxUploadStep({ orderId, lineItemId, token, exp, onUpload
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [ocrStatus, setOcrStatus] = useState<string | null>(null);
+
+  function loadScript(src: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (typeof window !== 'undefined' && getTesseract()) {
+        resolve();
+        return;
+      }
+      if (document.querySelector(`script[src="${src}"]`)) {
+        resolve();
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = src;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error(`Failed to load script ${src}`));
+      document.head.appendChild(script);
+    });
+  }
+
+  async function performOcr(file: File): Promise<RxTypedValues | null> {
+    try {
+      await loadScript('https://unpkg.com/tesseract.js@5.0.3/dist/tesseract.min.js');
+      const Tesseract = getTesseract();
+      if (!Tesseract) {
+        throw new Error('Tesseract failed to load');
+      }
+
+      const reader = new FileReader();
+      const fileDataUrl = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const { parseRxText } = await import('../lib/ocr-parser');
+      const worker = await Tesseract.createWorker('eng');
+      const { data: { text } } = await worker.recognize(fileDataUrl);
+      await worker.terminate();
+
+      return parseRxText(text);
+    } catch (err) {
+      console.warn('OCR scanning failed or timed out', err);
+      return null;
+    }
+  }
 
   async function handleFile(file: File) {
     setError(null);
+    setOcrStatus(null);
 
     if (file.size > MAX_SIZE) {
       setError('File is too large (max 10 MB)');
@@ -41,6 +101,13 @@ export default function RxUploadStep({ orderId, lineItemId, token, exp, onUpload
     setProgress(10);
 
     try {
+      // Start OCR scan in parallel if it's an image
+      let ocrPromise: Promise<RxTypedValues | null> = Promise.resolve(null);
+      if (file.type.startsWith('image/')) {
+        setOcrStatus('Scanning prescription text...');
+        ocrPromise = performOcr(file);
+      }
+
       const urlRes = await fetch('/api/rx/upload-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -75,11 +142,20 @@ export default function RxUploadStep({ orderId, lineItemId, token, exp, onUpload
         throw new Error('Upload failed — please try again');
       }
 
+      setProgress(80);
+      if (file.type.startsWith('image/')) {
+        setOcrStatus('Finalizing scan analysis...');
+      }
+      
+      const parsedValues = await ocrPromise;
+      
       setProgress(100);
-      onUploadComplete(storagePath, file.type || 'image/jpeg');
+      setOcrStatus(null);
+      onUploadComplete(storagePath, file.type || 'image/jpeg', parsedValues ?? undefined);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed');
       setUploading(false);
+      setOcrStatus(null);
       setProgress(0);
     }
   }
@@ -178,6 +254,14 @@ export default function RxUploadStep({ orderId, lineItemId, token, exp, onUpload
           <p className="text-sm text-muted">
             {progress < 100 ? 'Uploading...' : 'Upload complete!'}
           </p>
+          {ocrStatus && (
+            <div className="mt-3 p-3 bg-accent/5 border border-accent/20 rounded-lg animate-pulse flex items-center gap-2">
+              <span className="inline-block w-2.5 h-2.5 rounded-full bg-accent animate-ping" />
+              <span className="text-xs font-mono font-bold text-accent uppercase tracking-wider">
+                {ocrStatus}
+              </span>
+            </div>
+          )}
         </div>
       )}
 

@@ -82,8 +82,10 @@ export default function RxReviewDetail({ detail, onReviewComplete }: RxReviewDet
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 bg-white rounded-lg border border-line overflow-auto p-2 mb-4">
-        {detail.mimeType === 'application/pdf' ? (
+      <div className="flex-1 bg-white rounded-lg border border-line overflow-auto p-2 mb-4 flex items-center justify-center min-h-[300px]">
+        {!detail.imageUrl ? (
+          <p className="text-muted-soft font-serif italic text-sm">No prescription document available</p>
+        ) : detail.mimeType === 'application/pdf' ? (
           <iframe src={detail.imageUrl} className="w-full h-full min-h-[500px]" title="Rx PDF" />
         ) : (
           // eslint-disable-next-line @next/next/no-img-element

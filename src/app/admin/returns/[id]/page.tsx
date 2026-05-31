@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth/middleware';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -38,11 +39,18 @@ export default async function ReturnDetailPage({ params }: PageProps) {
     : { data: null };
 
   return (
-    <ReturnDetail
-      ret={ret}
-      order={order ?? { shopify_order_number: '—', customer_name: '—', total: 0 }}
-      lineItem={lineItem}
-      reviewerUserId={user.id}
-    />
+    <div className="space-y-6">
+      <div>
+        <Link href="/admin/returns" className="text-xs font-mono text-accent hover:underline uppercase tracking-wider font-bold">
+          ← Back to Returns Queue
+        </Link>
+      </div>
+      <ReturnDetail
+        ret={ret}
+        order={order ?? { shopify_order_number: '—', customer_name: '—', total: 0 }}
+        lineItem={lineItem}
+        reviewerUserId={user.id}
+      />
+    </div>
   );
 }

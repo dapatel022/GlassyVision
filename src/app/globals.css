@@ -17,9 +17,9 @@
   --color-warning: #b06a00;
 
   /* Typography */
-  --font-sans: 'Inter Tight', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-sans: var(--font-inter-tight), ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-serif: 'Fraunces', ui-serif, Georgia, serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, Menlo, monospace;
 }
 
 :root {

@@ -2,6 +2,7 @@
 
 import type { LensConfig, LensType } from '@/features/cart/types';
 import { LENS_TYPES, COATINGS, TINTS } from './lens-options';
+import LensAdvisor from './LensAdvisor';
 
 interface LensPickerProps {
   value: LensConfig;
@@ -84,6 +85,13 @@ export default function LensPicker({ value, onChange }: LensPickerProps) {
             </button>
           ))}
         </div>
+      </div>
+
+      <div className="border-t border-line pt-6 mt-6">
+        <p className="text-xs font-sans font-bold uppercase tracking-wider text-ink mb-4">
+          Lens & Coating Virtual Advisor
+        </p>
+        <LensAdvisor />
       </div>
     </div>
   );

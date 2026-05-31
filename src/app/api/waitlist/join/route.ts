@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 export async function POST(request: NextRequest) {
-  const body = await request.json().catch(() => null) as { email?: string; dropSlug?: string } | null;
+  const body = await request.json().catch(() => null) as { email?: string; dropSlug?: string; phone?: string } | null;
   const email = body?.email?.trim().toLowerCase();
   const dropSlug = body?.dropSlug?.trim();
+  const phone = body?.phone?.trim() || null;
 
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return NextResponse.json({ error: 'Valid email required' }, { status: 400 });
@@ -27,7 +28,7 @@ export async function POST(request: NextRequest) {
 
   const { error } = await supabase
     .from('waitlist')
-    .insert({ email, drop_id: drop.id, notify_when: 'launch' });
+    .insert({ email, drop_id: drop.id, notify_when: 'launch', phone });
 
   if (error) {
     if (error.code === '23505') {

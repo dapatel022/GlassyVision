@@ -16,8 +16,13 @@ export default async function DropsAdminPage() {
     .order('number', { ascending: false });
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
+    <div className="space-y-6">
+      <div>
+        <Link href="/admin" className="text-xs font-mono text-accent hover:underline uppercase tracking-wider font-bold">
+          ← Back to Dashboard
+        </Link>
+      </div>
+      <div className="flex items-center justify-between">
         <h1 className="font-sans text-2xl font-black tracking-tight uppercase text-ink">Drops</h1>
         <Link
           href="/admin/drops/new"

@@ -54,8 +54,13 @@ export default function RxIntakeWizard({
     setStep('upload');
   }
 
-  function handleUploadComplete(storagePath: string, mimeType: string) {
-    setCurrentUpload({ lineItemId: currentItem.id, storagePath, mimeType });
+  function handleUploadComplete(storagePath: string, mimeType: string, parsedValues?: RxTypedValues) {
+    setCurrentUpload({
+      lineItemId: currentItem.id,
+      storagePath,
+      mimeType,
+      typedValues: parsedValues || null
+    });
     setStep('typed-values');
   }
 

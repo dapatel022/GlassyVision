@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { listAwaitingRx } from '@/features/admin/awaiting-rx/queries';
 
 export const dynamic = 'force-dynamic';
@@ -15,6 +16,12 @@ export default async function AwaitingRxPage() {
 
   return (
     <div className="space-y-6">
+      <div>
+        <Link href="/admin" className="text-xs font-mono text-accent hover:underline uppercase tracking-wider font-bold">
+          ← Back to Dashboard
+        </Link>
+      </div>
+
       <header>
         <h1 className="font-sans text-2xl font-black tracking-tight uppercase text-ink mb-1">
           Orders awaiting Rx

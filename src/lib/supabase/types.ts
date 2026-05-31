@@ -1068,6 +1068,7 @@ export type Database = {
           notify_when: Database['public']['Enums']['notify_trigger'];
           created_at: string;
           notified_at: string | null;
+          phone: string | null;
         };
         Insert: {
           id?: string;
@@ -1077,6 +1078,7 @@ export type Database = {
           notify_when?: Database['public']['Enums']['notify_trigger'];
           created_at?: string;
           notified_at?: string | null;
+          phone?: string | null;
         };
         Update: {
           id?: string;
@@ -1086,6 +1088,7 @@ export type Database = {
           notify_when?: Database['public']['Enums']['notify_trigger'];
           created_at?: string;
           notified_at?: string | null;
+          phone?: string | null;
         };
         Relationships: [
           { foreignKeyName: 'waitlist_drop_id_fkey'; columns: ['drop_id']; referencedRelation: 'drops'; referencedColumns: ['id'] },

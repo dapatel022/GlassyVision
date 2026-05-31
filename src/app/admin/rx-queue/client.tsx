@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import RxQueueList from '@/features/admin/rx-queue/components/RxQueueList';
@@ -34,8 +35,14 @@ export default function RxQueueClient({ items }: RxQueueClientProps) {
   const selected = items.find((i) => i.id === selectedId) || null;
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
+    <div className="space-y-6">
+      <div>
+        <Link href="/admin" className="text-xs font-mono text-accent hover:underline uppercase tracking-wider font-bold">
+          ← Back to Dashboard
+        </Link>
+      </div>
+
+      <div className="flex items-center justify-between">
         <h1 className="font-sans text-2xl font-black tracking-tight uppercase text-ink">
           Rx Review Queue
           <span className="ml-2 text-sm font-mono text-muted align-middle">

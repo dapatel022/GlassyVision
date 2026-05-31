@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { RxTypedValues } from '../actions/auto-checks';
+import WebcamPdModal from '@/features/shop/WebcamPdModal';
 
 interface RxTypedValuesStepProps {
   initialValues: RxTypedValues | null;
@@ -47,6 +48,7 @@ function Field({
 
 export default function RxTypedValuesStep({ initialValues, onSubmit, onSkip }: RxTypedValuesStepProps) {
   const [values, setValues] = useState<RxTypedValues>(initialValues || EMPTY_VALUES);
+  const [isPdModalOpen, setIsPdModalOpen] = useState(false);
 
   function update(field: keyof RxTypedValues, value: string) {
     setValues((prev) => ({ ...prev, [field]: value }));
@@ -93,22 +95,33 @@ export default function RxTypedValuesStep({ initialValues, onSubmit, onSkip }: R
       </div>
 
       <div className="border-t border-line pt-4 mb-6">
-        <div className="flex items-center gap-4 mb-3">
-          <h3 className="font-sans font-bold text-sm text-ink">PD — Pupillary Distance</h3>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => update('pdType', 'binocular')}
-              className={`text-xs px-3 py-1 rounded-full ${values.pdType === 'binocular' ? 'bg-accent text-white' : 'bg-base-deeper text-muted'}`}
-            >
-              Single
-            </button>
-            <button
-              onClick={() => update('pdType', 'mono')}
-              className={`text-xs px-3 py-1 rounded-full ${values.pdType === 'mono' ? 'bg-accent text-white' : 'bg-base-deeper text-muted'}`}
-            >
-              Per Eye
-            </button>
+        <div className="flex items-center justify-between gap-4 mb-3">
+          <div className="flex items-center gap-4">
+            <h3 className="font-sans font-bold text-sm text-ink">PD — Pupillary Distance</h3>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => update('pdType', 'binocular')}
+                className={`text-xs px-3 py-1 rounded-full ${values.pdType === 'binocular' ? 'bg-accent text-white' : 'bg-base-deeper text-muted'}`}
+              >
+                Single
+              </button>
+              <button
+                type="button"
+                onClick={() => update('pdType', 'mono')}
+                className={`text-xs px-3 py-1 rounded-full ${values.pdType === 'mono' ? 'bg-accent text-white' : 'bg-base-deeper text-muted'}`}
+              >
+                Per Eye
+              </button>
+            </div>
           </div>
+          <button
+            type="button"
+            onClick={() => setIsPdModalOpen(true)}
+            className="text-xs text-accent font-sans font-bold hover:text-accent-light flex items-center gap-1 transition-colors"
+          >
+            📷 Measure with Camera
+          </button>
         </div>
         {values.pdType === 'binocular' ? (
           <div className="max-w-xs">
@@ -133,6 +146,15 @@ export default function RxTypedValuesStep({ initialValues, onSubmit, onSkip }: R
           Continue
         </button>
       </div>
+
+      <WebcamPdModal
+        isOpen={isPdModalOpen}
+        onClose={() => setIsPdModalOpen(false)}
+        onApply={(pdValue) => {
+          update('pdType', 'binocular');
+          update('pd', pdValue.toString());
+        }}
+      />
     </div>
   );
 }

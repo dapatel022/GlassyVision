@@ -20,8 +20,13 @@ export default async function ReturnsQueuePage() {
   const recent = (returns ?? []).filter((r) => r.status !== 'pending');
 
   return (
-    <div>
-      <h1 className="font-sans text-2xl font-black tracking-tight uppercase text-ink mb-6">Returns queue</h1>
+    <div className="space-y-6">
+      <div>
+        <Link href="/admin" className="text-xs font-mono text-accent hover:underline uppercase tracking-wider font-bold">
+          ← Back to Dashboard
+        </Link>
+      </div>
+      <h1 className="font-sans text-2xl font-black tracking-tight uppercase text-ink">Returns queue</h1>
 
       <section className="mb-10">
         <h2 className="font-sans font-bold text-sm uppercase tracking-wider text-muted-soft mb-3">

@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth/middleware';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -16,8 +17,13 @@ export default async function InventoryPage() {
     .order('sku');
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
+    <div className="space-y-6">
+      <div>
+        <Link href="/admin" className="text-xs font-mono text-accent hover:underline uppercase tracking-wider font-bold">
+          ← Back to Dashboard
+        </Link>
+      </div>
+      <div className="flex items-center justify-between">
         <div>
           <h1 className="font-sans text-2xl font-black tracking-tight uppercase text-ink">Inventory pool</h1>
           <p className="text-sm text-muted font-serif italic">{pool?.length ?? 0} SKUs tracked</p>

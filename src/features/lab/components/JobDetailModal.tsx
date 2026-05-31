@@ -139,8 +139,8 @@ export default function JobDetailModal({ job, onClose }: Props) {
 
         <div className="mt-4 text-center">
           <a
-            href={`/admin/work-orders/${job.workOrderId}`}
-            className="text-xs text-accent underline"
+            href={`/lab/work-orders/${job.workOrderId}`}
+            className="text-xs text-accent underline font-mono uppercase tracking-wider font-bold"
           >
             Open full work-order detail →
           </a>

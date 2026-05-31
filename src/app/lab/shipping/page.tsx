@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { createAdminClient } from '@/lib/supabase/admin';
 import ShippingQueue from '@/features/lab/components/ShippingQueue';
 
@@ -45,8 +46,13 @@ export default async function LabShippingPage() {
   });
 
   return (
-    <div>
-      <h1 className="font-sans text-2xl font-black tracking-tight uppercase text-ink mb-6">Shipping queue</h1>
+    <div className="space-y-6">
+      <div>
+        <Link href="/lab" className="text-xs font-mono text-accent hover:underline uppercase tracking-wider font-bold">
+          ← Back to Lab Workbench
+        </Link>
+      </div>
+      <h1 className="font-sans text-2xl font-black tracking-tight uppercase text-ink">Shipping queue</h1>
       <ShippingQueue items={items} />
 
       {recent && recent.length > 0 && (

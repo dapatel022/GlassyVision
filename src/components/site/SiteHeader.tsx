@@ -6,9 +6,9 @@ import { useCart } from '@/context/CartContext';
 
 const NAV_LINKS = [
   { href: '/shop', label: 'Shop' },
+  { href: '/quiz', label: 'Frame Finder' },
   { href: '/drops', label: 'Drops' },
   { href: '/story', label: 'Story' },
-  { href: '/lookbook', label: 'Lookbook' },
 ];
 
 export default function SiteHeader() {
@@ -16,8 +16,8 @@ export default function SiteHeader() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-40 bg-base/90 backdrop-blur border-b border-line">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+    <header className="sticky top-4 z-40 max-w-7xl mx-auto px-4 sm:px-6 w-full transition-all">
+      <div className="bg-white/80 backdrop-blur-md border border-line rounded-2xl px-6 h-16 flex items-center justify-between shadow-sm">
         <Link href="/" className="font-sans text-lg font-black tracking-tight uppercase text-ink">
           GLASSYVISION<span className="text-accent">.</span>
         </Link>
@@ -27,27 +27,27 @@ export default function SiteHeader() {
             <Link
               key={l.href}
               href={l.href}
-              className="font-sans text-sm font-bold uppercase tracking-wider text-ink hover:text-accent transition-colors"
+              className="font-sans text-xs font-bold uppercase tracking-wider text-ink hover:text-accent transition-colors"
             >
               {l.label}
             </Link>
           ))}
         </nav>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-4">
           <Link
             href="/account"
-            className="hidden md:inline-block text-xs font-sans font-bold uppercase tracking-wider text-muted hover:text-ink"
+            className="hidden md:inline-block text-xs font-sans font-bold uppercase tracking-wider text-muted hover:text-ink transition-colors"
           >
             Account
           </Link>
           <Link
             href="/cart"
-            className="relative inline-flex items-center gap-1 font-sans text-sm font-bold uppercase tracking-wider text-ink hover:text-accent transition-colors"
+            className="relative inline-flex items-center gap-1 font-sans text-xs font-bold uppercase tracking-wider text-ink hover:text-accent transition-colors"
           >
             Cart
             {hydrated && count > 0 && (
-              <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-accent text-white text-xs font-mono">
+              <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-accent text-white text-xs font-mono font-bold">
                 {count}
               </span>
             )}
@@ -71,14 +71,14 @@ export default function SiteHeader() {
       </div>
 
       {mobileOpen && (
-        <div className="md:hidden border-t border-line bg-base">
+        <div className="md:hidden mt-2 border border-line rounded-2xl bg-white/95 backdrop-blur-md shadow-lg overflow-hidden animate-fade-in-up">
           <nav className="flex flex-col p-4 gap-3">
             {NAV_LINKS.map((l) => (
               <Link
                 key={l.href}
                 href={l.href}
                 onClick={() => setMobileOpen(false)}
-                className="font-sans text-sm font-bold uppercase tracking-wider text-ink py-2"
+                className="font-sans text-xs font-bold uppercase tracking-wider text-ink py-2"
               >
                 {l.label}
               </Link>
@@ -86,7 +86,7 @@ export default function SiteHeader() {
             <Link
               href="/account"
               onClick={() => setMobileOpen(false)}
-              className="font-sans text-sm font-bold uppercase tracking-wider text-muted py-2 border-t border-line"
+              className="font-sans text-xs font-bold uppercase tracking-wider text-muted py-2 border-t border-line"
             >
               Account
             </Link>

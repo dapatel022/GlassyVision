@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth/middleware';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -26,10 +27,17 @@ export default async function EditDropPage({ params }: PageProps) {
   if (!drop) notFound();
 
   return (
-    <div className="max-w-2xl">
-      <h1 className="font-sans text-2xl font-black tracking-tight uppercase text-ink mb-6">
-        Edit {drop.name}
-      </h1>
+    <div className="max-w-2xl space-y-6">
+      <div>
+        <Link href="/admin/drops" className="text-xs font-mono text-accent hover:underline uppercase tracking-wider font-bold">
+          ← Back to Drops List
+        </Link>
+      </div>
+      <div>
+        <h1 className="font-sans text-2xl font-black tracking-tight uppercase text-ink mb-2">
+          Edit {drop.name}
+        </h1>
+      </div>
       <DropForm existing={drop} />
     </div>
   );

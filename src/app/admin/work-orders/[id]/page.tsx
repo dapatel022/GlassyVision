@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth/middleware';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -62,7 +63,12 @@ export default async function WorkOrderDetailPage({ params }: PageProps) {
   }
 
   return (
-    <div className="min-h-screen bg-base p-6">
+    <div className="space-y-6">
+      <div>
+        <Link href="/admin" className="text-xs font-mono text-accent hover:underline uppercase tracking-wider font-bold">
+          ← Back to Dashboard
+        </Link>
+      </div>
       <WorkOrderDetail
         workOrder={workOrder}
         order={order ?? { shopify_order_number: '—', customer_email: '—', customer_name: '—' }}
