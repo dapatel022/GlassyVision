@@ -26,8 +26,14 @@ export function verifyClaimToken(customerId: string, token: string, exp: number)
     const expected = createHmac('sha256', getSecret())
       .update(`${customerId}:${exp}`, 'utf-8')
       .digest('hex');
+    // timingSafeEqual throws on length mismatch — guard so a wrong-length token
+    // is a clean rejection, not a thrown-then-swallowed false.
+    if (token.length !== expected.length) return false;
     return timingSafeEqual(Buffer.from(expected), Buffer.from(token));
-  } catch {
+  } catch (e) {
+    // A misconfigured secret must surface (Sentry/500), not silently reject
+    // every token as if it were invalid.
+    if (e instanceof Error && e.message.includes('CLAIM_TOKEN_SECRET')) throw e;
     return false;
   }
 }

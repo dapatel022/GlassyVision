@@ -1111,6 +1111,10 @@ export type Database = {
         Args: { allowed_roles: Database['public']['Enums']['user_role'][] };
         Returns: boolean;
       };
+      current_customer_id: {
+        Args: Record<string, never>;
+        Returns: string | null;
+      };
     };
     Enums: {
       user_role: 'pending' | 'founder' | 'reviewer' | 'lab_admin' | 'lab_operator' | 'lab_qc' | 'lab_shipping';
