@@ -1,29 +1,27 @@
-import Link from 'next/link';
+import { redirect } from 'next/navigation';
+import { getCurrentCustomer } from '@/lib/auth/customer';
 
 export const metadata = { title: 'Account' };
 
-export default function AccountPage() {
-  return (
-    <div className="max-w-2xl mx-auto px-4 sm:px-6 py-16">
-      <p className="text-xs font-mono font-bold uppercase tracking-widest text-muted-soft mb-2">Account</p>
-      <h1 className="font-sans text-4xl font-black tracking-tight uppercase text-ink mb-8">
-        Your account
-      </h1>
+export default async function AccountPage() {
+  const customer = await getCurrentCustomer();
+  if (!customer) redirect('/account/login?next=/account');
 
-      <div className="p-6 border border-dashed border-line rounded-xl text-center">
-        <p className="font-serif italic text-muted mb-4">
-          Account dashboard is coming with Drop Nº 01.
-        </p>
-        <p className="text-sm text-muted-soft mb-6">
-          Track orders, download receipts, start returns, save addresses.
-        </p>
-        <Link
-          href="/track/example"
-          className="inline-block px-4 py-2 border border-line rounded-lg text-sm font-sans font-bold uppercase tracking-wider text-ink hover:bg-base-deeper"
-        >
-          Track an order with your link
-        </Link>
+  return (
+    <main className="min-h-screen bg-base px-6 py-16">
+      <div className="max-w-2xl mx-auto space-y-8">
+        <header>
+          <h1 className="font-sans text-2xl font-black uppercase text-ink">Your account</h1>
+          <p className="text-sm text-muted mt-1">{customer.email}</p>
+        </header>
+        <section className="border border-line bg-white p-6">
+          <h2 className="font-sans text-sm font-bold uppercase tracking-widest text-ink">Subscription</h2>
+          <p className="text-sm text-muted mt-2">Your subscription dashboard will appear here.</p>
+        </section>
+        <form action="/account/auth/signout" method="post">
+          <button type="submit" className="text-xs font-mono text-muted underline">Sign out</button>
+        </form>
       </div>
-    </div>
+    </main>
   );
 }
