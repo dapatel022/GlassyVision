@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminFetch } from '@/lib/commerce/shopify-admin';
+import { adminFetchPage } from '@/lib/commerce/shopify-admin';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { syncShopifyOrder, type ShopifyOrderPayload } from '@/lib/commerce/sync';
 
@@ -32,32 +32,45 @@ export async function GET(request: NextRequest) {
   let gapFilledCount = 0;
 
   try {
-    // Look back 48 hours to ensure webhooks gaps are fully covered
+    // Look back 48 hours to ensure webhook gaps are fully covered.
     const dateMin = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-    const data = await adminFetch<ShopifyOrdersResponse>(
-      `orders.json?status=any&created_at_min=${encodeURIComponent(dateMin)}`
-    );
 
-    const orders = data?.orders || [];
-    scannedCount = orders.length;
+    // Page through ALL matching orders via cursor pagination. Shopify caps a
+    // page at 250 and only accepts limit+page_info on subsequent pages, so the
+    // filter goes on the first request only. A page cap bounds a runaway loop.
+    const MAX_PAGES = 50;
+    let endpoint = `orders.json?status=any&limit=250&created_at_min=${encodeURIComponent(dateMin)}`;
+    let pages = 0;
 
-    for (const order of orders) {
-      if (!order.id) continue;
-      // Check if order already exists in our database mirror
-      const { data: existing } = await supabase
-        .from('orders')
-        .select('id')
-        .eq('shopify_order_id', order.id)
-        .maybeSingle();
+    for (;;) {
+      const { data, nextPageInfo } = await adminFetchPage<ShopifyOrdersResponse>(endpoint);
+      const orders = data?.orders || [];
+      scannedCount += orders.length;
 
-      if (!existing) {
-        gapFilledCount++;
+      for (const order of orders) {
+        if (!order.id) continue;
+        const { data: existing } = await supabase
+          .from('orders')
+          .select('id')
+          .eq('shopify_order_id', order.id)
+          .maybeSingle();
+
+        if (!existing) gapFilledCount++;
+
+        const syncResult = await syncShopifyOrder(order, supabase);
+        if (!syncResult.success) {
+          console.error(`[reconcile] Failed to sync order ${order.id}: ${syncResult.error}`);
+        }
       }
 
-      const syncResult = await syncShopifyOrder(order, supabase);
-      if (!syncResult.success) {
-        console.error(`[reconcile] Failed to sync order ${order.id}: ${syncResult.error}`);
+      pages++;
+      if (!nextPageInfo || pages >= MAX_PAGES) {
+        if (nextPageInfo) {
+          console.warn(`[reconcile] hit MAX_PAGES (${MAX_PAGES}); ${scannedCount} scanned, more orders remain unscanned`);
+        }
+        break;
       }
+      endpoint = `orders.json?limit=250&page_info=${encodeURIComponent(nextPageInfo)}`;
     }
 
     return NextResponse.json({
@@ -65,6 +78,7 @@ export async function GET(request: NextRequest) {
       message: 'Reconciliation run complete.',
       scannedCount,
       gapFilledCount,
+      pagesScanned: pages,
     });
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown error';

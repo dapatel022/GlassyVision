@@ -1,16 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const mockAdminFetch = vi.fn();
+const mockAdminFetchPage = vi.fn();
 vi.mock('@/lib/commerce/shopify-admin', () => ({
-  adminFetch: mockAdminFetch,
+  adminFetchPage: mockAdminFetchPage,
 }));
 
 const mockFrom = vi.fn();
 vi.mock('@/lib/supabase/admin', () => ({
-  createAdminClient: vi.fn(() => ({
-    from: mockFrom,
-  })),
+  createAdminClient: vi.fn(() => ({ from: mockFrom })),
 }));
 
 const mockSyncShopifyOrder = vi.fn();
@@ -25,15 +23,18 @@ const ORIGINAL_TOKEN = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN;
 function buildRequest(authHeader?: string): NextRequest {
   const reqHeaders = new Headers();
   if (authHeader) reqHeaders.set('authorization', authHeader);
-  return new NextRequest('http://localhost/api/cron/reconcile', {
-    method: 'GET',
-    headers: reqHeaders,
-  });
+  return new NextRequest('http://localhost/api/cron/reconcile', { method: 'GET', headers: reqHeaders });
+}
+
+// orders that don't yet exist locally
+function ordersNotExistingClient() {
+  const select = vi.fn(() => ({ eq: vi.fn(() => ({ maybeSingle: vi.fn(() => Promise.resolve({ data: null, error: null })) })) }));
+  return (table: string) => (table === 'orders' ? { select } : {});
 }
 
 describe('Reconciliation Cron Route Handler', () => {
   beforeEach(() => {
-    mockAdminFetch.mockReset();
+    mockAdminFetchPage.mockReset();
     mockFrom.mockReset();
     mockSyncShopifyOrder.mockReset();
     process.env.CRON_SECRET = 'test-cron-secret';
@@ -49,78 +50,48 @@ describe('Reconciliation Cron Route Handler', () => {
 
   it('rejects unauthorized requests with 401', async () => {
     const { GET } = await import('@/app/api/cron/reconcile/route');
-    const req = buildRequest('Bearer wrong');
-    const res = await GET(req);
-
+    const res = await GET(buildRequest('Bearer wrong'));
     expect(res.status).toBe(401);
   });
 
   it('returns stubbed message when Shopify env vars are missing', async () => {
     delete process.env.SHOPIFY_ADMIN_ACCESS_TOKEN;
     const { GET } = await import('@/app/api/cron/reconcile/route');
-    const req = buildRequest('Bearer test-cron-secret');
-    const res = await GET(req);
+    const res = await GET(buildRequest('Bearer test-cron-secret'));
     const body = await res.json();
-
     expect(res.status).toBe(200);
     expect(body.stubbed).toBe(true);
-    expect(mockAdminFetch).not.toHaveBeenCalled();
+    expect(mockAdminFetchPage).not.toHaveBeenCalled();
   });
 
   it('scans and syncs new orders (gapFilledCount = 1)', async () => {
-    mockAdminFetch.mockResolvedValueOnce({
-      orders: [{ id: 12345, name: 'GV-1001' }],
-    });
+    mockAdminFetchPage.mockResolvedValueOnce({ data: { orders: [{ id: 12345, name: 'GV-1001' }] }, nextPageInfo: null });
     mockSyncShopifyOrder.mockResolvedValueOnce({ success: true });
-
-    // Mock DB check (order does not exist)
-    const mockSelect = vi.fn(() => ({
-      eq: vi.fn(() => ({
-        maybeSingle: vi.fn(() => Promise.resolve({ data: null, error: null })),
-      })),
-    }));
-    mockFrom.mockImplementation((table: string) => {
-      if (table === 'orders') return { select: mockSelect };
-      return {};
-    });
+    mockFrom.mockImplementation(ordersNotExistingClient());
 
     const { GET } = await import('@/app/api/cron/reconcile/route');
-    const req = buildRequest('Bearer test-cron-secret');
-    const res = await GET(req);
-    const body = await res.json();
-
-    expect(res.status).toBe(200);
+    const body = await (await GET(buildRequest('Bearer test-cron-secret'))).json();
     expect(body.success).toBe(true);
     expect(body.scannedCount).toBe(1);
     expect(body.gapFilledCount).toBe(1);
     expect(mockSyncShopifyOrder).toHaveBeenCalledWith({ id: 12345, name: 'GV-1001' }, expect.any(Object));
   });
 
-  it('scans existing orders without incrementing gapFilledCount', async () => {
-    mockAdminFetch.mockResolvedValueOnce({
-      orders: [{ id: 12345, name: 'GV-1001' }],
-    });
-    mockSyncShopifyOrder.mockResolvedValueOnce({ success: true });
-
-    // Mock DB check (order already exists)
-    const mockSelect = vi.fn(() => ({
-      eq: vi.fn(() => ({
-        maybeSingle: vi.fn(() => Promise.resolve({ data: { id: 'local-uuid' }, error: null })),
-      })),
-    }));
-    mockFrom.mockImplementation((table: string) => {
-      if (table === 'orders') return { select: mockSelect };
-      return {};
-    });
+  it('follows cursor pagination across multiple pages', async () => {
+    mockAdminFetchPage
+      .mockResolvedValueOnce({ data: { orders: [{ id: 1 }, { id: 2 }] }, nextPageInfo: 'CURSOR2' })
+      .mockResolvedValueOnce({ data: { orders: [{ id: 3 }] }, nextPageInfo: null });
+    mockSyncShopifyOrder.mockResolvedValue({ success: true });
+    mockFrom.mockImplementation(ordersNotExistingClient());
 
     const { GET } = await import('@/app/api/cron/reconcile/route');
-    const req = buildRequest('Bearer test-cron-secret');
-    const res = await GET(req);
-    const body = await res.json();
+    const body = await (await GET(buildRequest('Bearer test-cron-secret'))).json();
 
-    expect(res.status).toBe(200);
-    expect(body.success).toBe(true);
-    expect(body.scannedCount).toBe(1);
-    expect(body.gapFilledCount).toBe(0);
+    expect(mockAdminFetchPage).toHaveBeenCalledTimes(2);
+    // second call must carry the page_info cursor from page 1
+    expect(mockAdminFetchPage.mock.calls[1][0]).toContain('page_info=CURSOR2');
+    expect(body.scannedCount).toBe(3);
+    expect(body.pagesScanned).toBe(2);
+    expect(mockSyncShopifyOrder).toHaveBeenCalledTimes(3);
   });
 });

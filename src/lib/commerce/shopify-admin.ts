@@ -30,6 +30,40 @@ export async function adminFetch<T>(
   return response.json() as Promise<T>;
 }
 
+/**
+ * Extracts the `page_info` cursor for the next page from a Shopify REST
+ * `Link` header, e.g. `<https://x/orders.json?page_info=ABC&limit=250>; rel="next"`.
+ * Returns null when there is no next page.
+ */
+export function parseNextPageInfo(linkHeader: string | null): string | null {
+  if (!linkHeader) return null;
+  for (const part of linkHeader.split(',')) {
+    if (!/rel="next"/.test(part)) continue;
+    const match = part.match(/[?&]page_info=([^&>]+)/);
+    if (match) return decodeURIComponent(match[1]);
+  }
+  return null;
+}
+
+/** GET an Admin REST endpoint and return the body plus the next-page cursor. */
+export async function adminFetchPage<T>(endpoint: string): Promise<{ data: T; nextPageInfo: string | null }> {
+  const domain = process.env.SHOPIFY_STORE_DOMAIN!;
+  const token = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN!;
+
+  const response = await fetchWithRetry(
+    `https://${domain}/admin/api/${ADMIN_API_VERSION}/${endpoint}`,
+    { method: 'GET', headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': token } },
+  );
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Admin API error: ${response.status} ${errorBody}`);
+  }
+
+  const data = (await response.json()) as T;
+  return { data, nextPageInfo: parseNextPageInfo(response.headers.get('link')) };
+}
+
 export async function updateInventoryLevel(
   inventoryItemId: string,
   locationId: string,
