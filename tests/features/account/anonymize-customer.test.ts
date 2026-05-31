@@ -10,7 +10,7 @@ beforeEach(() => { fromAdmin.mockReset(); deleteUser.mockClear(); });
 
 describe('anonymizeCustomer', () => {
   it('scrubs PII, unlinks auth, sets deletion_requested_at, and never touches rx_files', async () => {
-    const update = vi.fn(() => ({ eq: () => Promise.resolve({ error: null }) }));
+    const update = vi.fn((_payload: Record<string, unknown>) => ({ eq: () => Promise.resolve({ error: null }) }));
     fromAdmin.mockImplementation((table: string) => {
       if (table === 'customers') {
         return {

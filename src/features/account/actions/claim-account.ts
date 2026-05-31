@@ -3,6 +3,7 @@
 import { createServerClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { verifyClaimToken } from '@/lib/auth/claim-token';
+import type { Json } from '@/lib/supabase/types';
 
 export type ClaimResult =
   | { status: 'claimed' }
@@ -39,7 +40,7 @@ export async function claimAccount(customerId: string, token: string, exp: numbe
 
   const { error } = await admin
     .from('customers')
-    .update({ auth_user_id: user.id, flags: nextFlags })
+    .update({ auth_user_id: user.id, flags: nextFlags as Json })
     .eq('id', customerId);
 
   if (error) return { status: 'error', error: 'Could not link your account. Please try again.' };
