@@ -12,8 +12,9 @@ test('admin dashboard shows live stats and section cards', async ({ page }) => {
   await expect(page.locator('h1')).toContainText(/admin dashboard/i);
   await expect(page.locator('body')).toContainText(/rx awaiting review/i);
   await expect(page.locator('body')).toContainText(/active drops/i);
-  await expect(page.locator('a', { hasText: /rx queue/i })).toBeVisible();
-  await expect(page.locator('a', { hasText: /lab kanban/i })).toBeVisible();
+  // Both the nav link and the section card link to these — match the first.
+  await expect(page.locator('a', { hasText: /rx queue/i }).first()).toBeVisible();
+  await expect(page.locator('a', { hasText: /lab kanban/i }).first()).toBeVisible();
 
   await page.screenshot({ path: '/tmp/gv-admin-dashboard.png', fullPage: true });
 });

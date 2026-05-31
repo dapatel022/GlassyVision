@@ -3,7 +3,8 @@ import { createHmac } from 'crypto';
 import path from 'path';
 
 const SECRET = process.env.RX_TOKEN_SECRET ?? '';
-const SAMPLE_IMAGE = '/tmp/sample-rx.jpg';
+// Committed image used as the uploaded Rx (1000x1000 PNG — passes image checks).
+const SAMPLE_IMAGE = path.join(__dirname, '../public/demo/archetype_tortoise.png');
 const SHOTS = '/tmp/gv-flow';
 
 function rxUrl(orderNumber: string): string {

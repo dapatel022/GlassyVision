@@ -1,7 +1,9 @@
 import { test, expect, Page } from '@playwright/test';
+import path from 'path';
 
 const SHOTS = '/tmp/gv-flow';
-const SAMPLE = '/tmp/sample-rx.jpg'; // reused as a fake QC photo
+// A committed image used as a fake QC photo (PNG is an allowed QC upload type).
+const SAMPLE = path.join(__dirname, '../public/demo/archetype_tortoise.png');
 
 async function loginAs(page: Page, email: string) {
   await page.goto('/login');
