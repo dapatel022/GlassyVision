@@ -45,6 +45,8 @@ function installClient(opts: ClientOpts = {}) {
         return { select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: { shopify_line_item_id: 111 }, error: null }) }) }) };
       case 'shipments':
         return { insert: () => ({ select: () => ({ single: () => Promise.resolve({ data: { id: 's-1' }, error: null }) }) }) };
+      case 'subscription_redemptions':
+        return { update: () => ({ eq: () => ({ select: () => Promise.resolve({ data: [], error: null }) }) }) };
       default:
         return {};
     }

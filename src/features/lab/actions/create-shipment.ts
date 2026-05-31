@@ -5,6 +5,7 @@ import { getCurrentUser, isLabRole } from '@/lib/auth/middleware';
 import { createFulfillment } from '@/lib/commerce/shopify-admin';
 import { isRxExpired } from '@/lib/rx/expiration';
 import { isDispensableDestination } from '@/lib/rx/market';
+import { advanceRedemptionForOrder } from '@/features/subscriptions/advance-redemption';
 
 export interface CreateShipmentInput {
   jobId: string;
@@ -121,6 +122,13 @@ export async function createShipment(input: CreateShipmentInput): Promise<{ succ
     .from('orders')
     .update({ fulfillment_status: 'shipped' })
     .eq('id', wo.order_id);
+
+  // Mirror onto a linked subscription redemption and anchor 3-year Rx retention
+  // at the ship date. No-op for normal Shopify orders (no redemption links them).
+  // Runs after the local shipment + order update succeed — never gates shipment.
+  await advanceRedemptionForOrder(wo.order_id, 'shipped', supabase, {
+    retentionAnchor: new Date().toISOString().slice(0, 10),
+  });
 
   // Best-effort: reflect the shipment in Shopify so the customer receives
   // Shopify's fulfillment + tracking notification. A Shopify failure must never

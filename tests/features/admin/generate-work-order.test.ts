@@ -66,6 +66,8 @@ describe('generateWorkOrder', () => {
         select: existingCountSelect,
       };
       if (table === 'lab_jobs') return { insert: labJobInsert };
+      // Status mirroring (Task 7) — no-op for a normal Shopify order.
+      if (table === 'subscription_redemptions') return { update: () => ({ eq: () => ({ select: () => Promise.resolve({ data: [], error: null }) }) }) };
       return {};
     });
 

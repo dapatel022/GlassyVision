@@ -58,6 +58,9 @@ function installClient(o: ClientOverrides = {}) {
         };
       case 'shipments':
         return { insert: shipmentInsert };
+      case 'subscription_redemptions':
+        // status mirroring (Task 7) — no-op for these normal-order tests.
+        return { update: () => ({ eq: () => ({ select: () => Promise.resolve({ data: [], error: null }) }) }) };
       default:
         return {};
     }

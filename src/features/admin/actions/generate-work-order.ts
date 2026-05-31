@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import type { Database, Json } from '@/lib/supabase/types';
 import { isRxExpired } from '@/lib/rx/expiration';
 import { isDispensableDestination } from '@/lib/rx/market';
+import { advanceRedemptionForOrder } from '@/features/subscriptions/advance-redemption';
 
 type LensType = Database['public']['Enums']['lens_type'];
 type LensMaterial = Database['public']['Enums']['lens_material'];
@@ -135,6 +136,13 @@ export async function generateWorkOrder(rxFileId: string): Promise<GenerateWorkO
   if (jobError) {
     return { success: false, error: 'Work order created but lab job failed' };
   }
+
+  // Mirror status onto a linked subscription redemption (no-op for normal
+  // Shopify orders, which never match a redemption's internal_order_id). Called
+  // after the work order + lab job succeed so it can never block fulfillment.
+  await advanceRedemptionForOrder(rxFile.order_id, 'in_production', supabase, {
+    workOrderId: inserted.id,
+  });
 
   return { success: true, workOrderId: inserted.id, workOrderNumber: inserted.work_order_number };
 }
