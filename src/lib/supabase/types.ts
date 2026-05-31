@@ -52,6 +52,7 @@ export type Database = {
         Row: {
           id: string;
           shopify_customer_id: number | null;
+          auth_user_id: string | null;
           email: string;
           first_name: string | null;
           last_name: string | null;
@@ -69,6 +70,7 @@ export type Database = {
         Insert: {
           id?: string;
           shopify_customer_id?: number | null;
+          auth_user_id?: string | null;
           email: string;
           first_name?: string | null;
           last_name?: string | null;
@@ -86,6 +88,7 @@ export type Database = {
         Update: {
           id?: string;
           shopify_customer_id?: number | null;
+          auth_user_id?: string | null;
           email?: string;
           first_name?: string | null;
           last_name?: string | null;
