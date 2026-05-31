@@ -33,8 +33,10 @@ The clean separation — **no `user_role` enum change required**:
 
 **Reconciliation & edge cases:**
 - **Returning customer** (email already maps to a claimed account): new order auto-attaches via `sync.ts` email/`shopify_customer_id` match — no claim needed.
-- **Auth email ≠ checkout email:** the valid token *is* the authorization (gift-card semantics) → bind, but record both emails and **flag for admin** (anomaly signal). Never silently re-match into another row.
-- **Claim never hard-expires for a paid purchase:** re-issuable on demand via an email-entry page; unclaimed paid orders get reminder nudges via the existing cadence engine.
+- **Auth email ≠ checkout email — HARD REJECT in phase 1 (security-hardened).** Because there is no gifting in phase 1, the claimer is always the buyer, so we require the signed-in email to equal the checkout email. A leaked claim link alone therefore cannot bind another account (the link is not sufficient authorization). Gift-readiness stays at the architecture level (token-based claim); a future gift flow routes cross-email claims through an explicit re-verification step (one-time code to the original email). *(Original design allowed bind-and-flag; changed after automated security review flagged it as an account-takeover vector.)*
+- **Atomic bind:** the claim updates `auth_user_id` only `where auth_user_id is null` and checks the returned row count, closing the check-then-update race.
+- **Token hygiene:** claim token TTL is 14 days (re-issuable on demand), not 90. The claim helpers are server-only (not `'use server'` actions) to keep them off the client RPC surface.
+- **Claim never hard-expires for a paid purchase:** re-issuable on demand via an email-entry page (which must enforce CAPTCHA + per-IP/per-email rate limiting before calling the server-only `resendClaimLink`); unclaimed paid orders get reminder nudges via the existing cadence engine.
 - **Lost email / duplicate-account-from-different-checkout-email:** admin-mediated merge — flagged, tooling deferred.
 
 ## 4. Data model & RLS
