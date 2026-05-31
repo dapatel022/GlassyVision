@@ -121,8 +121,8 @@ describe('submitRx', () => {
     expect(insertArg.customer_email).toBe('alex@example.com');
     expect(insertArg.uploaded_by_ip).toBe('203.0.113.42');
     expect(insertArg.uploaded_by_user_agent).toBe('Mozilla/5.0 (test)');
-    // No typed values submitted → provenance defaults to manual.
-    expect(insertArg.typed_values_source).toBe('manual');
+    // No typed values submitted → provenance is null (distinct from 'manual').
+    expect(insertArg.typed_values_source).toBeNull();
   });
 
   it('records OCR provenance when typed values were auto-read from the image', async () => {

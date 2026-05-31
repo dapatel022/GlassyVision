@@ -37,7 +37,7 @@ export async function createShipment(input: CreateShipmentInput): Promise<{ succ
 
   const { data: wo } = await supabase
     .from('work_orders')
-    .select('order_id, rx_file_id, released_to_lab_at')
+    .select('order_id, line_item_id, rx_file_id, released_to_lab_at')
     .eq('id', job.work_order_id)
     .single();
   if (!wo) return { success: false, error: 'Work order not found' };
@@ -121,15 +121,16 @@ export async function createShipment(input: CreateShipmentInput): Promise<{ succ
         .select('shopify_order_id')
         .eq('id', wo.order_id)
         .single();
-      const { data: lineItems } = await supabase
+      // Scope the fulfillment to THIS work order's line item only — a
+      // multi-item order ships one work order at a time, so fulfilling every
+      // line item would wrongly mark the whole order shipped.
+      const { data: lineItem } = await supabase
         .from('order_line_items')
         .select('shopify_line_item_id')
-        .eq('order_id', wo.order_id);
-      if (orderRow?.shopify_order_id) {
-        const lineItemIds = (lineItems ?? [])
-          .map((li) => li.shopify_line_item_id)
-          .filter((id): id is number => typeof id === 'number');
-        await createFulfillment(orderRow.shopify_order_id, input.trackingNumber, input.carrier, lineItemIds);
+        .eq('id', wo.line_item_id)
+        .maybeSingle();
+      if (orderRow?.shopify_order_id && typeof lineItem?.shopify_line_item_id === 'number') {
+        await createFulfillment(orderRow.shopify_order_id, input.trackingNumber, input.carrier, [lineItem.shopify_line_item_id]);
       }
     } catch (e) {
       console.error('[create-shipment] Shopify fulfillment push failed (local shipment already recorded)', e);

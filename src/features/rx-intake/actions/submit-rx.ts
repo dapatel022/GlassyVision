@@ -136,7 +136,7 @@ export async function submitRx(input: SubmitRxInput): Promise<SubmitRxResult> {
       typed_os_add: input.typedValues?.osAdd || null,
       typed_pd: input.typedValues?.pd || null,
       typed_pd_type: input.typedValues?.pdType || null,
-      typed_values_source: input.typedValues ? (input.typedValuesSource ?? 'manual') : 'manual',
+      typed_values_source: input.typedValues ? (input.typedValuesSource ?? 'manual') : null,
       rx_expiration_date: input.expirationDate || null,
       certification_checked: input.certificationChecked,
       auto_check_results: { warnings } as unknown as Json,

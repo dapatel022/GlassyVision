@@ -22,7 +22,7 @@ function installCompliantClient() {
           update: () => ({ eq: () => Promise.resolve({ error: null }) }),
         };
       case 'work_orders':
-        return { select: () => ({ eq: () => ({ single: () => Promise.resolve({ data: { order_id: 'o-1', rx_file_id: 'rx-1', released_to_lab_at: '2026-05-01T00:00:00Z' }, error: null }) }) }) };
+        return { select: () => ({ eq: () => ({ single: () => Promise.resolve({ data: { order_id: 'o-1', line_item_id: 'li-1', rx_file_id: 'rx-1', released_to_lab_at: '2026-05-01T00:00:00Z' }, error: null }) }) }) };
       case 'rx_files':
         return { select: () => ({ eq: () => ({ single: () => Promise.resolve({ data: { id: 'rx-1', storage_path: 'p', deleted_at: null }, error: null }) }) }) };
       case 'rx_reviews':
@@ -33,7 +33,7 @@ function installCompliantClient() {
           update: () => ({ eq: () => Promise.resolve({ error: null }) }),
         };
       case 'order_line_items':
-        return { select: () => ({ eq: () => Promise.resolve({ data: [{ shopify_line_item_id: 111 }], error: null }) }) };
+        return { select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: { shopify_line_item_id: 111 }, error: null }) }) }) };
       case 'shipments':
         return { insert: () => ({ select: () => ({ single: () => Promise.resolve({ data: { id: 's-1' }, error: null }) }) }) };
       default:

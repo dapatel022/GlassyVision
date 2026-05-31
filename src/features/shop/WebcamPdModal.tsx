@@ -159,7 +159,7 @@ export default function WebcamPdModal({ isOpen, onClose, onApply }: WebcamPdModa
         {/* Viewport Container */}
         <div
           ref={containerRef}
-          className="relative bg-black aspect-[4/3] w-full overflow-hidden"
+          className="relative bg-black aspect-[4/3] w-full overflow-hidden touch-none"
         >
           {useMock ? (
             <div className="absolute inset-0 flex flex-col justify-between p-4 bg-gradient-to-b from-black/60 to-black/90">
