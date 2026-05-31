@@ -40,7 +40,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: 'weekly',
       priority: 0.8,
     }));
-  } catch {
+  } catch (e) {
+    console.warn('[sitemap] Shopify product fetch failed, omitting product URLs:', e);
     productEntries = [];
   }
 

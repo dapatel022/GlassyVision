@@ -141,9 +141,10 @@ export default function HeroShowcase() {
 
       {/* Right Column: Visual Frame Card */}
       <div className="lg:col-span-5 relative group">
-        <div className="aspect-[4/5] bg-white border border-line rounded-2xl overflow-hidden flex items-center justify-center p-8 shadow-md">
-          {/* Inner relative wrapper so next/image fill respects the p-8 padding */}
-          <div className="relative w-full h-full">
+        <div className="relative aspect-[4/5] bg-white border border-line rounded-2xl overflow-hidden shadow-md">
+          {/* inset-8 reproduces the old p-8 breathing room; absolute positioning
+              avoids relying on h-full inside a flex+aspect parent (Safari/FF). */}
+          <div className="absolute inset-8">
             <Image
               src={activeItem.imageUrl}
               alt={activeItem.title}

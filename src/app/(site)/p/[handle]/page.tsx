@@ -104,7 +104,7 @@ export default async function ProductDetailPage({ params }: PageProps) {
           </div>
 
           <p className="text-[10px] text-muted-soft font-serif italic text-center">
-            Upload prescription post-checkout or skip to submit values manually.
+            You can upload your prescription after checkout. A photo of your prescription is required before your lenses are made.
           </p>
         </div>
       </div>

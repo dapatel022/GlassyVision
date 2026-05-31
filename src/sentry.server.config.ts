@@ -5,11 +5,12 @@ import * as Sentry from '@sentry/nextjs';
 // prescription PII and must not ship IPs/headers/request bodies to Sentry.
 const dsn = process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN;
 
-if (dsn) {
+// Gate the entire init on production: `enabled: false` would still instrument
+// the runtime in dev, so we skip init outright instead.
+if (dsn && process.env.NODE_ENV === 'production') {
   Sentry.init({
     dsn,
     sendDefaultPii: false,
-    tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
-    enabled: process.env.NODE_ENV === 'production',
+    tracesSampleRate: 0.1,
   });
 }
