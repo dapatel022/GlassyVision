@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { generateRxToken } from '@/features/rx-intake/lib/rx-token';
+import { buildClaimUrl } from '@/lib/auth/claim-token';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,7 +15,7 @@ export default async function ThanksPage({ params }: PageProps) {
 
   const { data: order } = await supabase
     .from('orders')
-    .select('id, shopify_order_number, customer_email, has_rx_items')
+    .select('id, shopify_order_number, customer_email, has_rx_items, customer_id')
     .eq('shopify_order_number', orderId)
     .maybeSingle();
 
@@ -83,6 +84,20 @@ export default async function ThanksPage({ params }: PageProps) {
               Track your order
             </Link>
           </>
+        )}
+
+        {order.customer_id && (
+          <div className="mt-10 pt-8 border-t border-line">
+            <p className="text-muted font-serif italic mb-4 leading-relaxed">
+              Create an account to track orders, manage your subscription, and reuse your prescription.
+            </p>
+            <a
+              href={buildClaimUrl(order.customer_id, process.env.NEXT_PUBLIC_APP_URL ?? 'https://glassyvision.com')}
+              className="inline-block py-3 px-6 bg-ink text-base font-sans font-bold text-xs tracking-widest uppercase"
+            >
+              Create your account
+            </a>
+          </div>
         )}
       </div>
     </div>
