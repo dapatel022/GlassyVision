@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyShopifyWebhook } from '@/lib/utils/hmac';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { syncShopifyOrder, type ShopifyOrderPayload } from '@/lib/commerce/sync';
+import { provisionMembershipFromOrder } from '@/features/subscriptions/provision-membership';
 import { anonymizeCustomer } from '@/features/account/actions/anonymize-customer';
 import type { Json } from '@/lib/supabase/types';
 
@@ -61,10 +62,28 @@ export async function POST(request: NextRequest) {
   try {
     switch (topic) {
       case 'orders/create':
-      case 'orders/updated': {
+      case 'orders/updated':
+      case 'orders/paid': {
         const syncResult = await syncShopifyOrder(payload as ShopifyOrderPayload, supabase);
         if (!syncResult.success) {
           throw new Error(`Sync failed: ${syncResult.error}`);
+        }
+
+        // After the order is mirrored into Supabase, attempt subscription
+        // provisioning. The helper is internally paid-gated and idempotent
+        // (unique on shopify_order_id), so a duplicate delivery on any of these
+        // topics — or a non-membership order — is a safe no-op.
+        const shopifyOrderId = (payload as { id?: number }).id;
+        if (shopifyOrderId) {
+          const { data: orderRow } = await supabase
+            .from('orders')
+            .select('id, shopify_order_id, customer_id, customer_email, currency, financial_status')
+            .eq('shopify_order_id', shopifyOrderId)
+            .maybeSingle();
+
+          if (orderRow) {
+            await provisionMembershipFromOrder(orderRow, supabase);
+          }
         }
         break;
       }
