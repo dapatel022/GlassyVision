@@ -3,6 +3,7 @@ import { verifyShopifyWebhook } from '@/lib/utils/hmac';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { syncShopifyOrder, type ShopifyOrderPayload } from '@/lib/commerce/sync';
 import { provisionMembershipFromOrder } from '@/features/subscriptions/provision-membership';
+import { confirmAddonPayment } from '@/features/subscriptions/confirm-addon-payment';
 import { anonymizeCustomer } from '@/features/account/actions/anonymize-customer';
 import type { Json } from '@/lib/supabase/types';
 
@@ -69,12 +70,21 @@ export async function POST(request: NextRequest) {
           throw new Error(`Sync failed: ${syncResult.error}`);
         }
 
-        // After the order is mirrored into Supabase, attempt subscription
-        // provisioning. The helper is internally paid-gated and idempotent
-        // (unique on shopify_order_id), so a duplicate delivery on any of these
-        // topics — or a non-membership order — is a safe no-op.
         const shopifyOrderId = (payload as { id?: number }).id;
-        if (shopifyOrderId) {
+        const financialStatus = (payload as { financial_status?: string }).financial_status;
+
+        // A subscription add-on (surcharge) checkout carries a `redemption_id`
+        // line-item property and a membership purchase carries the plan product —
+        // they are mutually exclusive. Add-on confirmation is amount-verified and
+        // only advances a still-`pending_payment` redemption, so a replay is safe.
+        if (syncResult.redemptionId && financialStatus === 'paid' && shopifyOrderId) {
+          const paidAmount = Number((payload as { total_price?: number | string }).total_price ?? 0);
+          await confirmAddonPayment(syncResult.redemptionId, paidAmount, shopifyOrderId, supabase);
+        } else if (shopifyOrderId) {
+          // After the order is mirrored into Supabase, attempt subscription
+          // provisioning. The helper is internally paid-gated and idempotent
+          // (unique on shopify_order_id), so a duplicate delivery on any of these
+          // topics — or a non-membership order — is a safe no-op.
           const { data: orderRow } = await supabase
             .from('orders')
             .select('id, shopify_order_id, customer_id, customer_email, currency, financial_status')

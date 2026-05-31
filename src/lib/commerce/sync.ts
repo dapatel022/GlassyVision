@@ -12,6 +12,8 @@ export interface SyncOrderResult {
   success: boolean;
   orderId?: string;
   error?: string;
+  /** Set when the order is a subscription add-on (surcharge) checkout. */
+  redemptionId?: string | null;
 }
 
 // Subset of the Shopify Order webhook/Admin payload that this sync consumes.
@@ -184,6 +186,10 @@ export async function syncShopifyOrder(
 
     // 5. Check Line Items for Rx requirements
     let hasRxItems = false;
+    // Subscription add-on checkouts carry a `redemption_id` line-item property
+    // (set in startRedemption). We surface it so the webhook can confirm the
+    // surcharge payment against the right (amount-verified) redemption.
+    let redemptionId: string | null = null;
     const lineItemsToInsert: LineItemInsert[] = [];
 
     const lineItems = payload.line_items || [];
@@ -213,6 +219,7 @@ export async function syncShopifyOrder(
           if (name === 'frameshape') frameShape = prop.value;
           if (name === 'framecolor') frameColor = prop.value;
           if (name === 'framesize') frameSize = prop.value;
+          if (name === 'redemption_id' || name === '_redemption_id') redemptionId = prop.value;
         }
       }
 
@@ -404,7 +411,7 @@ export async function syncShopifyOrder(
       }
     }
 
-    return { success: true, orderId: orderUuid };
+    return { success: true, orderId: orderUuid, redemptionId };
   } catch (err) {
     const message = err instanceof Error ? err.message : 'unknown';
     return { success: false, error: `Exception during sync: ${message}` };
