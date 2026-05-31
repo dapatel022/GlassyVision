@@ -83,27 +83,6 @@ export async function syncShopifyOrder(
       const lifetimeValue = customerPayload ? Number(customerPayload.total_spent || 0) : Number(payload.total_price || 0);
       const totalOrders = customerPayload ? Number(customerPayload.orders_count || 1) : 1;
 
-      // Check by shopify_customer_id first if available
-      let existingCustomer = null;
-      if (shopifyCustomerId) {
-        const { data: byId } = await supabase
-          .from('customers')
-          .select('id')
-          .eq('shopify_customer_id', shopifyCustomerId)
-          .maybeSingle();
-        existingCustomer = byId;
-      }
-
-      if (!existingCustomer && customerEmail) {
-        // Fallback check by email
-        const { data: byEmail } = await supabase
-          .from('customers')
-          .select('id')
-          .eq('email', customerEmail)
-          .maybeSingle();
-        existingCustomer = byEmail;
-      }
-
       const customerObj = {
         shopify_customer_id: shopifyCustomerId,
         email: customerEmail,
@@ -114,30 +93,51 @@ export async function syncShopifyOrder(
         last_order_at: payload.created_at || new Date().toISOString(),
       };
 
-      if (existingCustomer) {
-        const { data: updated, error: updateErr } = await supabase
+      if (shopifyCustomerId) {
+        // Atomic upsert on the unique shopify_customer_id — avoids the
+        // check-then-insert race that produced duplicate customer rows under
+        // Shopify's at-least-once webhook delivery.
+        const { data: up, error: upErr } = await supabase
           .from('customers')
-          .update(customerObj)
-          .eq('id', existingCustomer.id)
+          .upsert(customerObj, { onConflict: 'shopify_customer_id' })
           .select('id')
           .single();
-
-        if (updateErr) {
-          console.error('[sync] Failed to update customer', updateErr);
+        if (upErr) {
+          console.error('[sync] Failed to upsert customer', upErr);
         } else {
-          customerUuid = updated.id;
+          customerUuid = up.id;
         }
       } else {
-        const { data: inserted, error: insertErr } = await supabase
+        // Guest checkout (no Shopify customer id): best-effort dedupe by email.
+        const { data: byEmail } = await supabase
           .from('customers')
-          .insert(customerObj)
           .select('id')
-          .single();
+          .eq('email', customerEmail)
+          .maybeSingle();
 
-        if (insertErr) {
-          console.error('[sync] Failed to insert customer', insertErr);
+        if (byEmail) {
+          const { data: updated, error: updateErr } = await supabase
+            .from('customers')
+            .update(customerObj)
+            .eq('id', byEmail.id)
+            .select('id')
+            .single();
+          if (updateErr) {
+            console.error('[sync] Failed to update customer', updateErr);
+          } else {
+            customerUuid = updated.id;
+          }
         } else {
-          customerUuid = inserted.id;
+          const { data: inserted, error: insertErr } = await supabase
+            .from('customers')
+            .insert(customerObj)
+            .select('id')
+            .single();
+          if (insertErr) {
+            console.error('[sync] Failed to insert customer', insertErr);
+          } else {
+            customerUuid = inserted.id;
+          }
         }
       }
     }
