@@ -1,5 +1,8 @@
-'use server';
-
+// NOT a Server Action by design: a public, unauthenticated resend action is an
+// email-bombing + enumeration vector. This is a server-only helper. The future
+// "email me my claim link" UI must call it from a route handler that enforces
+// CAPTCHA + per-IP/per-email rate limiting before invoking it. It is not yet
+// wired to any UI.
 import { createAdminClient } from '@/lib/supabase/admin';
 import { buildClaimUrl } from '@/lib/auth/claim-token';
 import { renderClaimEmail, renderClaimEmailText } from '@/lib/email/claim-template';

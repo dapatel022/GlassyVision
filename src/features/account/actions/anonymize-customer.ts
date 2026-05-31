@@ -1,5 +1,8 @@
-'use server';
-
+// NOT a Server Action by design: this is a privileged, server-only helper (PII
+// scrub + auth-user deletion) invoked from the HMAC-verified Shopify
+// `customers/redact` webhook and other trusted server code. Exposing it as a
+// client-callable Server Action would be an unauthenticated IDOR — anyone could
+// anonymize/delete any customer by id.
 import { createAdminClient } from '@/lib/supabase/admin';
 
 /**

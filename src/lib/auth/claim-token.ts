@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from 'crypto';
 
-const DEFAULT_EXPIRY_DAYS = 90;
+// Short TTL for an account-bind primitive; the link is re-issuable on demand.
+const DEFAULT_EXPIRY_DAYS = 14;
 
 function getSecret(): string {
   const secret = process.env.CLAIM_TOKEN_SECRET;
