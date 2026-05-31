@@ -8,6 +8,8 @@ interface RxTypedValuesStepProps {
   initialValues: RxTypedValues | null;
   onSubmit: (values: RxTypedValues) => void;
   onSkip: () => void;
+  /** True when initialValues were auto-read from the photo and need verifying. */
+  ocrAssisted?: boolean;
 }
 
 const EMPTY_VALUES: RxTypedValues = {
@@ -46,7 +48,7 @@ function Field({
   );
 }
 
-export default function RxTypedValuesStep({ initialValues, onSubmit, onSkip }: RxTypedValuesStepProps) {
+export default function RxTypedValuesStep({ initialValues, onSubmit, onSkip, ocrAssisted }: RxTypedValuesStepProps) {
   const [values, setValues] = useState<RxTypedValues>(initialValues || EMPTY_VALUES);
   const [isPdModalOpen, setIsPdModalOpen] = useState(false);
 
@@ -62,6 +64,17 @@ export default function RxTypedValuesStep({ initialValues, onSubmit, onSkip }: R
       <p className="text-muted mb-6">
         Optional — enter the values from your prescription for a double-check. You can skip this step.
       </p>
+
+      {ocrAssisted && (
+        <div className="bg-amber-50 border border-amber-300 rounded-lg p-4 mb-6">
+          <p className="text-xs font-sans font-bold uppercase tracking-wider text-amber-800 mb-1">
+            Auto-filled from your photo — please verify
+          </p>
+          <p className="text-sm text-amber-900">
+            We read these values from your uploaded prescription. Automatic reading can make mistakes — check every value against your prescription and correct anything that&apos;s wrong before continuing.
+          </p>
+        </div>
+      )}
 
       <div className="bg-base-deeper border border-line rounded-lg p-4 mb-6">
         <p className="text-xs text-muted-soft font-sans font-bold uppercase tracking-wider mb-2">

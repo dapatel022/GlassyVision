@@ -273,6 +273,7 @@ export type Database = {
           typed_pd_type: Database['public']['Enums']['pd_type'] | null;
           rx_expiration_date: string | null;
           certification_checked: boolean;
+          typed_values_source: string;
           auto_check_results: Json | null;
           checksum_sha256: string | null;
           scan_quality_score: number | null;
@@ -302,6 +303,7 @@ export type Database = {
           typed_pd_type?: Database['public']['Enums']['pd_type'] | null;
           rx_expiration_date?: string | null;
           certification_checked?: boolean;
+          typed_values_source?: string;
           auto_check_results?: Json | null;
           checksum_sha256?: string | null;
           scan_quality_score?: number | null;
@@ -331,6 +333,7 @@ export type Database = {
           typed_pd_type?: Database['public']['Enums']['pd_type'] | null;
           rx_expiration_date?: string | null;
           certification_checked?: boolean;
+          typed_values_source?: string;
           auto_check_results?: Json | null;
           checksum_sha256?: string | null;
           scan_quality_score?: number | null;

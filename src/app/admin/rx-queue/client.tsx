@@ -19,6 +19,7 @@ interface QueueItem {
     osSphere: string | null; osCylinder: string | null; osAxis: string | null;
     pd: string | null;
   };
+  typedValuesSource?: string | null;
   autoCheckResults: Record<string, unknown> | null;
   certificationChecked: boolean;
   expirationDate: string | null;

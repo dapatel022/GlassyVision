@@ -19,6 +19,7 @@ interface RxDetail {
     osSphere: string | null; osCylinder: string | null; osAxis: string | null;
     pd: string | null;
   };
+  typedValuesSource?: string | null;
   autoCheckResults: Record<string, unknown> | null;
   certificationChecked: boolean;
   expirationDate: string | null;
@@ -103,7 +104,14 @@ export default function RxReviewDetail({ detail, onReviewComplete }: RxReviewDet
       </div>
 
       <div className="bg-base-deeper rounded-lg p-4 mb-4">
-        <p className="font-sans font-bold text-xs uppercase tracking-wider text-muted-soft mb-2">Typed Values</p>
+        <div className="flex items-center justify-between mb-2">
+          <p className="font-sans font-bold text-xs uppercase tracking-wider text-muted-soft">Typed Values</p>
+          {detail.typedValuesSource === 'ocr' && (
+            <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-800 bg-amber-100 border border-amber-300 rounded px-2 py-0.5">
+              OCR-assisted · verify vs image
+            </span>
+          )}
+        </div>
         <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm font-mono">
           <span>OD SPH: {detail.typedValues.odSphere || '—'}</span>
           <span>OS SPH: {detail.typedValues.osSphere || '—'}</span>

@@ -31,6 +31,7 @@ interface UploadState {
   storagePath: string;
   mimeType: string;
   typedValues: RxTypedValues | null;
+  ocrAssisted: boolean;
 }
 
 type Step = 'assignment' | 'upload' | 'typed-values' | 'certification' | 'success' | 'later';
@@ -59,7 +60,10 @@ export default function RxIntakeWizard({
       lineItemId: currentItem.id,
       storagePath,
       mimeType,
-      typedValues: parsedValues || null
+      typedValues: parsedValues || null,
+      // Values arriving here came from the OCR scan — flag them so the customer
+      // is asked to verify and the provenance is recorded on submit.
+      ocrAssisted: !!parsedValues,
     });
     setStep('typed-values');
   }
@@ -89,6 +93,7 @@ export default function RxIntakeWizard({
         mimeType: currentUpload.mimeType!,
         certificationChecked: certified,
         typedValues: currentUpload.typedValues || null,
+        typedValuesSource: currentUpload.typedValues && currentUpload.ocrAssisted ? 'ocr' : 'manual',
         expirationDate,
       };
 
@@ -178,6 +183,7 @@ export default function RxIntakeWizard({
           initialValues={currentUpload.typedValues || null}
           onSubmit={handleTypedValues}
           onSkip={handleSkipTypedValues}
+          ocrAssisted={!!currentUpload.ocrAssisted}
         />
       )}
       {step === 'certification' && (

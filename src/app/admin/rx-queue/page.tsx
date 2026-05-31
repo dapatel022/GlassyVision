@@ -27,6 +27,7 @@ export default async function RxQueuePage() {
       typed_os_cylinder,
       typed_os_axis,
       typed_pd,
+      typed_values_source,
       auto_check_results,
       certification_checked,
       rx_expiration_date
@@ -74,6 +75,7 @@ export default async function RxQueuePage() {
           osAxis: f.typed_os_axis,
           pd: f.typed_pd,
         },
+        typedValuesSource: f.typed_values_source,
         autoCheckResults: f.auto_check_results as Record<string, unknown> | null,
         certificationChecked: f.certification_checked,
         expirationDate: f.rx_expiration_date,
