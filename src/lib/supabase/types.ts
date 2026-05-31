@@ -108,7 +108,7 @@ export type Database = {
       orders: {
         Row: {
           id: string;
-          shopify_order_id: number;
+          shopify_order_id: number | null;
           shopify_order_number: string;
           customer_id: string | null;
           customer_email: string;
@@ -131,12 +131,13 @@ export type Database = {
           utm_campaign: string | null;
           first_order_ever: boolean | null;
           notes_internal: string | null;
+          order_source: Database['public']['Enums']['order_source'];
           created_at: string;
           updated_at: string;
         };
         Insert: {
           id?: string;
-          shopify_order_id: number;
+          shopify_order_id?: number | null;
           shopify_order_number: string;
           customer_id?: string | null;
           customer_email: string;
@@ -159,12 +160,13 @@ export type Database = {
           utm_campaign?: string | null;
           first_order_ever?: boolean | null;
           notes_internal?: string | null;
+          order_source?: Database['public']['Enums']['order_source'];
           created_at?: string;
           updated_at?: string;
         };
         Update: {
           id?: string;
-          shopify_order_id?: number;
+          shopify_order_id?: number | null;
           shopify_order_number?: string;
           customer_id?: string | null;
           customer_email?: string;
@@ -187,6 +189,7 @@ export type Database = {
           utm_campaign?: string | null;
           first_order_ever?: boolean | null;
           notes_internal?: string | null;
+          order_source?: Database['public']['Enums']['order_source'];
           created_at?: string;
           updated_at?: string;
         };
@@ -199,7 +202,7 @@ export type Database = {
         Row: {
           id: string;
           order_id: string;
-          shopify_line_item_id: number;
+          shopify_line_item_id: number | null;
           product_id: number | null;
           variant_id: number | null;
           product_handle: string | null;
@@ -217,7 +220,7 @@ export type Database = {
         Insert: {
           id?: string;
           order_id: string;
-          shopify_line_item_id: number;
+          shopify_line_item_id?: number | null;
           product_id?: number | null;
           variant_id?: number | null;
           product_handle?: string | null;
@@ -235,7 +238,7 @@ export type Database = {
         Update: {
           id?: string;
           order_id?: string;
-          shopify_line_item_id?: number;
+          shopify_line_item_id?: number | null;
           product_id?: number | null;
           variant_id?: number | null;
           product_handle?: string | null;
@@ -916,6 +919,8 @@ export type Database = {
           is_rx_capable: boolean;
           is_rx_sunglass_capable: boolean;
           max_prescription_power: number | null;
+          subscription_tier: string;
+          subscription_surcharge_variant_id: number | null;
           last_synced_at: string;
         };
         Insert: {
@@ -935,6 +940,8 @@ export type Database = {
           is_rx_capable?: boolean;
           is_rx_sunglass_capable?: boolean;
           max_prescription_power?: number | null;
+          subscription_tier?: string;
+          subscription_surcharge_variant_id?: number | null;
           last_synced_at?: string;
         };
         Update: {
@@ -954,6 +961,8 @@ export type Database = {
           is_rx_capable?: boolean;
           is_rx_sunglass_capable?: boolean;
           max_prescription_power?: number | null;
+          subscription_tier?: string;
+          subscription_surcharge_variant_id?: number | null;
           last_synced_at?: string;
         };
         Relationships: [];
@@ -1100,6 +1109,202 @@ export type Database = {
           { foreignKeyName: 'waitlist_drop_id_fkey'; columns: ['drop_id']; referencedRelation: 'drops'; referencedColumns: ['id'] },
         ];
       };
+      subscription_plans: {
+        Row: {
+          id: string;
+          name: string;
+          pairs_count: number;
+          term_months: number;
+          billing_mode: string;
+          redemption_policy: Json;
+          end_of_term_policy: Json;
+          shopify_product_id: number | null;
+          shopify_variant_id: number | null;
+          status: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          pairs_count?: number;
+          term_months?: number;
+          billing_mode?: string;
+          redemption_policy?: Json;
+          end_of_term_policy?: Json;
+          shopify_product_id?: number | null;
+          shopify_variant_id?: number | null;
+          status?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          name?: string;
+          pairs_count?: number;
+          term_months?: number;
+          billing_mode?: string;
+          redemption_policy?: Json;
+          end_of_term_policy?: Json;
+          shopify_product_id?: number | null;
+          shopify_variant_id?: number | null;
+          status?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      subscription_memberships: {
+        Row: {
+          id: string;
+          plan_id: string;
+          customer_id: string | null;
+          shopify_order_id: number;
+          status: Database['public']['Enums']['membership_status'];
+          term_start: string;
+          term_end: string;
+          pairs_total: number;
+          redemption_policy: Json;
+          end_of_term_policy: Json;
+          next_renewal_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          plan_id: string;
+          customer_id?: string | null;
+          shopify_order_id: number;
+          status?: Database['public']['Enums']['membership_status'];
+          term_start?: string;
+          term_end: string;
+          pairs_total: number;
+          redemption_policy: Json;
+          end_of_term_policy: Json;
+          next_renewal_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          plan_id?: string;
+          customer_id?: string | null;
+          shopify_order_id?: number;
+          status?: Database['public']['Enums']['membership_status'];
+          term_start?: string;
+          term_end?: string;
+          pairs_total?: number;
+          redemption_policy?: Json;
+          end_of_term_policy?: Json;
+          next_renewal_at?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          { foreignKeyName: 'subscription_memberships_plan_id_fkey'; columns: ['plan_id']; referencedRelation: 'subscription_plans'; referencedColumns: ['id'] },
+          { foreignKeyName: 'subscription_memberships_customer_id_fkey'; columns: ['customer_id']; referencedRelation: 'customers'; referencedColumns: ['id'] },
+        ];
+      };
+      subscription_redemptions: {
+        Row: {
+          id: string;
+          membership_id: string;
+          slot_index: number;
+          status: Database['public']['Enums']['redemption_status'];
+          unlocks_at: string;
+          frame_variant_id: number | null;
+          is_premium: boolean;
+          lens_config: Json;
+          ship_to: Json | null;
+          expected_surcharge: number;
+          add_on_shopify_order_id: number | null;
+          internal_order_id: string | null;
+          internal_line_item_id: string | null;
+          rx_file_id: string | null;
+          rx_review_id: string | null;
+          work_order_id: string | null;
+          retention_anchor: string | null;
+          pending_payment_expires_at: string | null;
+          redeemed_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          membership_id: string;
+          slot_index: number;
+          status?: Database['public']['Enums']['redemption_status'];
+          unlocks_at?: string;
+          frame_variant_id?: number | null;
+          is_premium?: boolean;
+          lens_config?: Json;
+          ship_to?: Json | null;
+          expected_surcharge?: number;
+          add_on_shopify_order_id?: number | null;
+          internal_order_id?: string | null;
+          internal_line_item_id?: string | null;
+          rx_file_id?: string | null;
+          rx_review_id?: string | null;
+          work_order_id?: string | null;
+          retention_anchor?: string | null;
+          pending_payment_expires_at?: string | null;
+          redeemed_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          membership_id?: string;
+          slot_index?: number;
+          status?: Database['public']['Enums']['redemption_status'];
+          unlocks_at?: string;
+          frame_variant_id?: number | null;
+          is_premium?: boolean;
+          lens_config?: Json;
+          ship_to?: Json | null;
+          expected_surcharge?: number;
+          add_on_shopify_order_id?: number | null;
+          internal_order_id?: string | null;
+          internal_line_item_id?: string | null;
+          rx_file_id?: string | null;
+          rx_review_id?: string | null;
+          work_order_id?: string | null;
+          retention_anchor?: string | null;
+          pending_payment_expires_at?: string | null;
+          redeemed_at?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          { foreignKeyName: 'subscription_redemptions_membership_id_fkey'; columns: ['membership_id']; referencedRelation: 'subscription_memberships'; referencedColumns: ['id'] },
+          { foreignKeyName: 'subscription_redemptions_internal_order_id_fkey'; columns: ['internal_order_id']; referencedRelation: 'orders'; referencedColumns: ['id'] },
+          { foreignKeyName: 'subscription_redemptions_internal_line_item_id_fkey'; columns: ['internal_line_item_id']; referencedRelation: 'order_line_items'; referencedColumns: ['id'] },
+          { foreignKeyName: 'subscription_redemptions_rx_file_id_fkey'; columns: ['rx_file_id']; referencedRelation: 'rx_files'; referencedColumns: ['id'] },
+          { foreignKeyName: 'subscription_redemptions_rx_review_id_fkey'; columns: ['rx_review_id']; referencedRelation: 'rx_reviews'; referencedColumns: ['id'] },
+          { foreignKeyName: 'subscription_redemptions_work_order_id_fkey'; columns: ['work_order_id']; referencedRelation: 'work_orders'; referencedColumns: ['id'] },
+        ];
+      };
+      subscription_addon_options: {
+        Row: {
+          id: string;
+          key: string;
+          label: string;
+          shopify_variant_id: number | null;
+          price: number;
+          lens_effect: Json;
+          active: boolean;
+        };
+        Insert: {
+          id?: string;
+          key: string;
+          label: string;
+          shopify_variant_id?: number | null;
+          price?: number;
+          lens_effect?: Json;
+          active?: boolean;
+        };
+        Update: {
+          id?: string;
+          key?: string;
+          label?: string;
+          shopify_variant_id?: number | null;
+          price?: number;
+          lens_effect?: Json;
+          active?: boolean;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -1128,7 +1333,10 @@ export type Database = {
       lens_type: 'single_vision' | 'progressive' | 'reading' | 'non_prescription';
       lens_material: 'cr39' | 'polycarbonate' | 'high_index_1_67' | 'high_index_1_74';
       kanban_column: 'inbox' | 'ready_to_cut' | 'on_edger' | 'on_bench' | 'qc' | 'ship';
-      adjustment_reason: 'initial_stock' | 'restock' | 'order_fulfilled' | 'walk_in_depletion' | 'manual_correction' | 'damaged' | 'return_restock';
+      adjustment_reason: 'initial_stock' | 'restock' | 'order_fulfilled' | 'walk_in_depletion' | 'manual_correction' | 'damaged' | 'return_restock' | 'subscription_reserved' | 'subscription_release';
+      order_source: 'shopify' | 'subscription';
+      membership_status: 'active' | 'grace' | 'expired' | 'cancelled' | 'refunded' | 'frozen';
+      redemption_status: 'available' | 'locked' | 'pending_payment' | 'awaiting_rx' | 'in_review' | 'in_production' | 'shipped' | 'delivered' | 'cancelled' | 'expired' | 'rx_rejected';
       return_request_type: 'return' | 'replacement' | 'remake';
       return_reason: 'damaged' | 'defective' | 'wrong_size' | 'wrong_rx_typed' | 'wrong_rx_our_fault' | 'change_of_mind' | 'other';
       return_resolution: 'refund' | 'replacement' | 'store_credit';
