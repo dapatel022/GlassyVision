@@ -36,7 +36,12 @@ export async function anonymizeCustomer(customerId: string): Promise<{ success: 
   if (error) return { success: false, error: 'Anonymization failed' };
 
   if (customer.auth_user_id) {
-    await admin.auth.admin.deleteUser(customer.auth_user_id);
+    const { error: deleteErr } = await admin.auth.admin.deleteUser(customer.auth_user_id);
+    if (deleteErr) {
+      // PII is already scrubbed and auth_user_id nulled (login impossible), so
+      // we still report success — but surface the orphaned auth.users row.
+      console.error('[anonymize] auth.deleteUser failed', { customerId, error: deleteErr.message });
+    }
   }
 
   return { success: true };
