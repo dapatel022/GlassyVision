@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyShopifyWebhook } from '@/lib/utils/hmac';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { syncShopifyOrder, type ShopifyOrderPayload } from '@/lib/commerce/sync';
+import { anonymizeCustomer } from '@/features/account/actions/anonymize-customer';
 import type { Json } from '@/lib/supabase/types';
 
 export async function POST(request: NextRequest) {
@@ -126,6 +127,25 @@ export async function POST(request: NextRequest) {
               .upsert(metadataObj, { onConflict: 'shopify_product_id,shopify_variant_id' });
           }
         }
+        break;
+      }
+      case 'customers/redact': {
+        const shopifyCustomerId = (payload as { customer?: { id?: number } }).customer?.id;
+        if (shopifyCustomerId) {
+          const { data: customer } = await supabase
+            .from('customers')
+            .select('id')
+            .eq('shopify_customer_id', shopifyCustomerId)
+            .maybeSingle();
+          if (customer) {
+            await anonymizeCustomer(customer.id);
+          }
+        }
+        break;
+      }
+      case 'shop/redact': {
+        // Shop-level erasure request: no per-customer action needed for us.
+        console.log('Received shop/redact');
         break;
       }
       default:
