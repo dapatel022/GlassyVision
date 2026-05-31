@@ -42,6 +42,6 @@ describe('syncShopifyOrder — customer dedupe', () => {
     expect(customerUpsert).toHaveBeenCalledTimes(1);
     expect(customerInsert).not.toHaveBeenCalled();
     // upsert must target the unique shopify_customer_id
-    expect(customerUpsert.mock.calls[0][1]).toMatchObject({ onConflict: 'shopify_customer_id' });
+    expect((customerUpsert.mock.calls[0] as unknown[])[1]).toMatchObject({ onConflict: 'shopify_customer_id' });
   });
 });

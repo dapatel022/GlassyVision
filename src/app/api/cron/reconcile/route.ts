@@ -32,14 +32,17 @@ export async function GET(request: NextRequest) {
   let gapFilledCount = 0;
 
   try {
-    // Look back 48 hours to ensure webhook gaps are fully covered.
+    // Look back 48 hours to ensure webhook gaps are fully covered. Filter on
+    // updated_at (not created_at) so an order created earlier but whose state
+    // changed recently — e.g. a late payment capture whose webhook was missed —
+    // is still reconciled.
     const dateMin = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
 
     // Page through ALL matching orders via cursor pagination. Shopify caps a
     // page at 250 and only accepts limit+page_info on subsequent pages, so the
     // filter goes on the first request only. A page cap bounds a runaway loop.
     const MAX_PAGES = 50;
-    let endpoint = `orders.json?status=any&limit=250&created_at_min=${encodeURIComponent(dateMin)}`;
+    let endpoint = `orders.json?status=any&limit=250&updated_at_min=${encodeURIComponent(dateMin)}`;
     let pages = 0;
 
     for (;;) {
@@ -55,11 +58,12 @@ export async function GET(request: NextRequest) {
           .eq('shopify_order_id', order.id)
           .maybeSingle();
 
-        if (!existing) gapFilledCount++;
-
         const syncResult = await syncShopifyOrder(order, supabase);
         if (!syncResult.success) {
           console.error(`[reconcile] Failed to sync order ${order.id}: ${syncResult.error}`);
+        } else if (!existing) {
+          // Count a gap as filled only once the missing order actually synced.
+          gapFilledCount++;
         }
       }
 
