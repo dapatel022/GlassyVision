@@ -32,9 +32,9 @@ const STAGES = [
   },
   {
     step: '05',
-    title: 'Optometric Bench Glazing',
+    title: 'Bench Glazing',
     subtitle: 'Lab Calibration',
-    description: 'Lenses are cut, beveled, and snapped into the frame under double-checked optician supervision. Technicians lock in correct pupillary distance (PD) offsets and align prescription cylinder axes with precision.'
+    description: 'Lenses are cut, beveled, and snapped into the frame, then QC-checked. Technicians lock in correct pupillary distance (PD) offsets and align prescription cylinder axes with precision.'
   }
 ];
 

@@ -25,7 +25,7 @@ export default async function HomePage() {
       {/* Infinite Scrolling Ticker */}
       <div className="bg-ink text-white py-4 overflow-hidden border-y border-line">
         <div className="flex whitespace-nowrap animate-slide text-xs font-mono tracking-[4px] uppercase font-bold text-base-deeper">
-          <span className="mx-8">Hand-finished in India & Syracuse</span>
+          <span className="mx-8">Designed in Syracuse · Hand-finished in India</span>
           <span className="mx-8 text-accent">•</span>
           <span className="mx-8">Cellulose Acetate & Pure Titanium</span>
           <span className="mx-8 text-accent">•</span>
@@ -34,7 +34,7 @@ export default async function HomePage() {
           <span className="mx-8">Prescription Ready Optics</span>
           <span className="mx-8 text-accent">•</span>
           {/* duplicate for infinite illusion */}
-          <span className="mx-8">Hand-finished in India & Syracuse</span>
+          <span className="mx-8">Designed in Syracuse · Hand-finished in India</span>
           <span className="mx-8 text-accent">•</span>
           <span className="mx-8">Cellulose Acetate & Pure Titanium</span>
           <span className="mx-8 text-accent">•</span>
@@ -54,9 +54,9 @@ export default async function HomePage() {
             <p className="text-xs text-muted font-serif italic">Strictly limited. No restocks planned.</p>
           </div>
           <div className="space-y-2 border-t md:border-t-0 md:border-l border-line pt-6 md:pt-0 md:pl-8">
-            <p className="text-[10px] font-sans font-bold uppercase tracking-wider text-muted-soft">Waitlist Active</p>
-            <h3 className="font-mono text-2xl font-bold text-accent">2,418 Joined</h3>
-            <p className="text-xs text-muted font-serif italic">Get access 24 hours before public drop.</p>
+            <p className="text-[10px] font-sans font-bold uppercase tracking-wider text-muted-soft">Waitlist</p>
+            <h3 className="font-mono text-2xl font-bold text-accent">Early Access</h3>
+            <p className="text-xs text-muted font-serif italic">Join to get access 24 hours before the public drop.</p>
           </div>
           <div className="space-y-2 border-t md:border-t-0 md:border-l border-line pt-6 md:pt-0 md:pl-8">
             <p className="text-[10px] font-sans font-bold uppercase tracking-wider text-muted-soft">Countdown to Release</p>
@@ -91,7 +91,7 @@ export default async function HomePage() {
             <div className="bg-white/60 backdrop-blur border border-line rounded-xl p-5 shadow-sm space-y-1.5">
               <span className="text-xl block">🩺</span>
               <h4 className="font-sans font-bold text-xs uppercase text-ink">Lab Fitted</h4>
-              <p className="text-[10px] text-muted-soft leading-normal">Optometrist double-checked lens cutting and alignment per prescription power.</p>
+              <p className="text-[10px] text-muted-soft leading-normal">Every lens is cut and aligned to your prescription, then QC-checked before it ships.</p>
             </div>
             <div className="bg-white/60 backdrop-blur border border-line rounded-xl p-5 shadow-sm space-y-1.5">
               <span className="text-xl block">📦</span>

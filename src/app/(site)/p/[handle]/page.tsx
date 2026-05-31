@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { getProductByHandle } from '@/lib/commerce/shopify';
 import ProductGallery from '@/features/shop/ProductGallery';
@@ -7,6 +8,32 @@ export const revalidate = 300;
 
 interface PageProps {
   params: Promise<{ handle: string }>;
+}
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { handle } = await params;
+  let product = null;
+  try {
+    product = await getProductByHandle(handle);
+  } catch {
+    product = null;
+  }
+  if (!product) {
+    return { title: 'Product not found · GlassyVision' };
+  }
+
+  const description = (product.description || `${product.title} — prescription-ready eyewear from GlassyVision.`).slice(0, 160);
+  const image = product.images?.[0]?.url;
+  return {
+    title: `${product.title} · GlassyVision`,
+    description,
+    openGraph: {
+      title: product.title,
+      description,
+      type: 'website',
+      ...(image ? { images: [{ url: image }] } : {}),
+    },
+  };
 }
 
 export default async function ProductDetailPage({ params }: PageProps) {
