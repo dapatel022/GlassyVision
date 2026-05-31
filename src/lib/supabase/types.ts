@@ -593,7 +593,7 @@ export type Database = {
           delta: number;
           reason: Database['public']['Enums']['adjustment_reason'];
           reference_order_id: string | null;
-          user_id: string;
+          user_id: string | null;
           notes: string | null;
           created_at: string;
         };
@@ -603,7 +603,7 @@ export type Database = {
           delta: number;
           reason: Database['public']['Enums']['adjustment_reason'];
           reference_order_id?: string | null;
-          user_id: string;
+          user_id?: string | null;
           notes?: string | null;
           created_at?: string;
         };
@@ -613,7 +613,7 @@ export type Database = {
           delta?: number;
           reason?: Database['public']['Enums']['adjustment_reason'];
           reference_order_id?: string | null;
-          user_id?: string;
+          user_id?: string | null;
           notes?: string | null;
           created_at?: string;
         };
