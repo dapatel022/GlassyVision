@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Image from 'next/image';
 import type { ShopifyImage } from '@/lib/commerce/types';
 
 interface ProductGalleryProps {
@@ -21,12 +22,14 @@ export default function ProductGallery({ images, title }: ProductGalleryProps) {
 
   return (
     <div>
-      <div className="aspect-square bg-base-deeper rounded-xl overflow-hidden mb-4">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
+      <div className="relative aspect-square bg-base-deeper rounded-xl overflow-hidden mb-4">
+        <Image
           src={images[active].url}
           alt={images[active].altText || title}
-          className="w-full h-full object-cover"
+          fill
+          priority
+          sizes="(max-width: 1024px) 100vw, 50vw"
+          className="object-cover"
         />
       </div>
       {images.length > 1 && (
@@ -35,12 +38,11 @@ export default function ProductGallery({ images, title }: ProductGalleryProps) {
             <button
               key={img.url}
               onClick={() => setActive(i)}
-              className={`aspect-square bg-base-deeper rounded-lg overflow-hidden border-2 ${
+              className={`relative aspect-square bg-base-deeper rounded-lg overflow-hidden border-2 ${
                 i === active ? 'border-accent' : 'border-transparent'
               }`}
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={img.url} alt="" className="w-full h-full object-cover" />
+              <Image src={img.url} alt="" fill sizes="10vw" className="object-cover" />
             </button>
           ))}
         </div>

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 
 interface ShowcaseItem {
   id: string;
@@ -141,14 +142,19 @@ export default function HeroShowcase() {
       {/* Right Column: Visual Frame Card */}
       <div className="lg:col-span-5 relative group">
         <div className="aspect-[4/5] bg-white border border-line rounded-2xl overflow-hidden flex items-center justify-center p-8 shadow-md">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={activeItem.imageUrl}
-            alt={activeItem.title}
-            className={`w-full h-full object-contain group-hover:scale-105 transition-all duration-500 ${
-              fadeState === 'in' ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
-            }`}
-          />
+          {/* Inner relative wrapper so next/image fill respects the p-8 padding */}
+          <div className="relative w-full h-full">
+            <Image
+              src={activeItem.imageUrl}
+              alt={activeItem.title}
+              fill
+              priority
+              sizes="(max-width: 1024px) 100vw, 40vw"
+              className={`object-contain group-hover:scale-105 transition-all duration-500 ${
+                fadeState === 'in' ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
+              }`}
+            />
+          </div>
           {/* Floating Badge */}
           <div className="absolute top-6 right-6 bg-white/90 backdrop-blur border border-line rounded-full px-4 py-1.5 shadow-sm">
             <span className="font-mono text-[9px] font-bold uppercase tracking-wider text-accent">

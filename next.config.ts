@@ -16,5 +16,4 @@ const nextConfig: NextConfig = {
 // AUTH_TOKEN are set, so it's safe to wrap unconditionally.
 export default withSentryConfig(nextConfig, {
   silent: !process.env.CI,
-  disableLogger: true,
 });

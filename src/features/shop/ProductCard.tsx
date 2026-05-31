@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import Image from 'next/image';
 import type { ShopifyProduct } from '@/lib/commerce/types';
 
 interface ProductCardProps {
@@ -19,11 +20,12 @@ export default function ProductCard({ product }: ProductCardProps) {
     >
       <div className="aspect-square bg-base-deeper flex items-center justify-center overflow-hidden relative">
         {image ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
+          <Image
             src={image.url}
             alt={image.altText || product.title}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+            fill
+            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+            className="object-cover group-hover:scale-105 transition-transform duration-700"
           />
         ) : (
           <div className="text-muted-soft font-serif italic text-sm">No image</div>
