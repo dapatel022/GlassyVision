@@ -30,7 +30,7 @@ function install(o: Opts = {}) {
           ship_to: { country_code: 'US' },
         };
   const membership =
-    'membership' in o ? o.membership : { customer_id: 'cust-1', currency: 'usd' };
+    'membership' in o ? o.membership : { customer_id: 'cust-1', currency: 'usd', customers: { email: 'a@b.com' } };
   const redemptionUpdate =
     o.redemptionUpdate ?? vi.fn(() => ({ eq: () => Promise.resolve({ error: null }) }));
 
@@ -80,6 +80,47 @@ describe('confirmAddonPayment', () => {
         add_on_shopify_order_id: 7777,
       }),
     );
+  });
+
+  it('passes the membership currency + customers-joined email into the fulfillment order', async () => {
+    install({ membership: { customer_id: 'cust-1', currency: 'cad', customers: { email: 'joined@example.com' } } });
+    const { confirmAddonPayment } = await import('@/features/subscriptions/confirm-addon-payment');
+    await confirmAddonPayment('slot-1', { paidSubtotal: 40, lineItems: fullLineItems }, 7777, { from } as never);
+    expect(createRedemptionFulfillmentOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        membership: expect.objectContaining({
+          customer_id: 'cust-1',
+          customer_email: 'joined@example.com',
+          currency: 'cad',
+        }),
+      }),
+      expect.anything(),
+    );
+  });
+
+  it('does NOT advance on a $0 subtotal when required variants exist, even if expected_surcharge is mis-set to 0', async () => {
+    const { redemptionUpdate } = install({
+      redemption: {
+        id: 'slot-1',
+        status: 'pending_payment',
+        membership_id: 'mem-1',
+        expected_surcharge: 0, // mis-recorded
+        frame_variant_id: 222,
+        lens_config: { addon_variant_ids: [9001, 8001] },
+        ship_to: { country_code: 'US' },
+      },
+    });
+    const { confirmAddonPayment } = await import('@/features/subscriptions/confirm-addon-payment');
+    const res = await confirmAddonPayment(
+      'slot-1',
+      { paidSubtotal: 0, lineItems: fullLineItems },
+      7777,
+      { from } as never,
+    );
+    expect(res.advanced).toBe(false);
+    expect(res.reason).toBe('amount_too_low');
+    expect(createRedemptionFulfillmentOrder).not.toHaveBeenCalled();
+    expect(redemptionUpdate).not.toHaveBeenCalled();
   });
 
   it('does NOT advance when a required variant is missing (even if subtotal >= expected)', async () => {

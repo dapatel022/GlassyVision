@@ -42,6 +42,9 @@ export default async function SubscriptionDashboardPage() {
 
   const supabase = createAdminClient();
 
+  // AUTHZ: the service-role admin client bypasses RLS, so the
+  // `.eq('customer_id', customer.id)` filter below IS the authorization — it
+  // scopes every read to the signed-in customer's own membership/redemptions.
   const { data: membership } = await supabase
     .from('subscription_memberships')
     .select('id, status, term_end, pairs_total')

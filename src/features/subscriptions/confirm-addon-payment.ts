@@ -89,7 +89,10 @@ export async function confirmAddonPayment(
   }
 
   // Product subtotal (excludes shipping/tax) must cover the expected surcharge.
-  if (Number(facts.paidSubtotal) < expected) {
+  // Defense in depth: when this redemption requires surcharge variants, a $0
+  // product subtotal can never satisfy the check even if `expected_surcharge`
+  // were mis-recorded as 0 — a fully-discounted/free add-on cart cannot pass.
+  if (Number(facts.paidSubtotal) < expected || (requiredVariantIds.length > 0 && Number(facts.paidSubtotal) <= 0)) {
     console.warn('[confirm-addon-payment] underpayment, not advancing', {
       redemptionId,
       paidSubtotal: facts.paidSubtotal,
@@ -98,11 +101,19 @@ export async function confirmAddonPayment(
     return { advanced: false, reason: 'amount_too_low' };
   }
 
+  // `currency` lives on the membership; `customer_email` is NOT a membership
+  // column — it lives on `customers`, joined here via the FK embed.
   const { data: membership } = await supabase
     .from('subscription_memberships')
-    .select('customer_id, customer_email, currency')
+    .select('customer_id, currency, customers ( email )')
     .eq('id', redemption.membership_id)
     .maybeSingle();
+
+  const membershipRow = membership as unknown as {
+    customer_id: string | null;
+    currency: string | null;
+    customers: { email: string | null } | null;
+  } | null;
 
   const { orderId, lineItemId } = await createRedemptionFulfillmentOrder(
     {
@@ -111,9 +122,9 @@ export async function confirmAddonPayment(
       lens_config: (redemption.lens_config ?? {}) as Record<string, unknown>,
       ship_to: (redemption.ship_to ?? null) as { country_code?: string } | null,
       membership: {
-        customer_id: membership?.customer_id ?? null,
-        customer_email: membership?.customer_email ?? null,
-        currency: membership?.currency ?? 'usd',
+        customer_id: membershipRow?.customer_id ?? null,
+        customer_email: membershipRow?.customers?.email ?? null,
+        currency: membershipRow?.currency ?? 'usd',
       },
     },
     supabase,

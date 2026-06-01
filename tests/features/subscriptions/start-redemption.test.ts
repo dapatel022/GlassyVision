@@ -38,9 +38,13 @@ interface BuildOpts {
 
 function install(o: BuildOpts = {}) {
   const membership =
-    'membership' in o ? o.membership : { id: 'mem-1', customer_id: 'cust-1', status: 'active', currency: 'usd' };
+    'membership' in o
+      ? o.membership
+      : { id: 'mem-1', customer_id: 'cust-1', status: 'active', currency: 'usd', customers: { email: 'a@b.com' } };
   const meta =
-    'meta' in o ? o.meta : { subscription_tier: 'included', subscription_surcharge_variant_id: null };
+    'meta' in o
+      ? o.meta
+      : { subscription_tier: 'included', subscription_surcharge_variant_id: null, subscription_surcharge_price: 0 };
   const addonOptions = o.addonOptions ?? [];
   const claimRows = 'claimRows' in o ? o.claimRows! : [{ id: 'slot-1' }];
   const pool = 'pool' in o ? o.pool : { id: 'pool-1', pool_quantity: 5 };
@@ -126,7 +130,7 @@ describe('startRedemption', () => {
   });
 
   it('rejects a slot that belongs to another customer (IDOR)', async () => {
-    install({ membership: { id: 'mem-9', customer_id: 'cust-OTHER', status: 'active', currency: 'usd' } });
+    install({ membership: { id: 'mem-9', customer_id: 'cust-OTHER', status: 'active', currency: 'usd', customers: { email: 'x@y.com' } } });
     const { startRedemption } = await import('@/features/subscriptions/actions/start-redemption');
     const res = await startRedemption(baseInput);
     expect(res.error).toBeTruthy();
@@ -136,7 +140,7 @@ describe('startRedemption', () => {
   });
 
   it('rejects when the membership is not active', async () => {
-    install({ membership: { id: 'mem-1', customer_id: 'cust-1', status: 'expired', currency: 'usd' } });
+    install({ membership: { id: 'mem-1', customer_id: 'cust-1', status: 'expired', currency: 'usd', customers: { email: 'a@b.com' } } });
     const { startRedemption } = await import('@/features/subscriptions/actions/start-redemption');
     const res = await startRedemption(baseInput);
     expect(res.error).toBeTruthy();
@@ -170,10 +174,29 @@ describe('startRedemption', () => {
     expect(spies.adjustInsert).toHaveBeenCalledWith(
       expect.objectContaining({ delta: -1, reason: 'subscription_reserved', user_id: null }),
     );
-    // synthesized order created
-    expect(createRedemptionFulfillmentOrder).toHaveBeenCalled();
+    // synthesized order created with the membership's currency + a real email
+    expect(createRedemptionFulfillmentOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        membership: expect.objectContaining({
+          customer_id: 'cust-1',
+          customer_email: 'a@b.com',
+          currency: 'usd',
+        }),
+      }),
+      expect.anything(),
+    );
     // no Shopify cart for a covered pair
     expect(createCart).not.toHaveBeenCalled();
+  });
+
+  it('covered path: carries the membership currency (CAD) onto the fulfillment order', async () => {
+    install({ membership: { id: 'mem-1', customer_id: 'cust-1', status: 'active', currency: 'cad', customers: { email: 'a@b.com' } } });
+    const { startRedemption } = await import('@/features/subscriptions/actions/start-redemption');
+    await startRedemption(baseInput);
+    expect(createRedemptionFulfillmentOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ membership: expect.objectContaining({ currency: 'cad' }) }),
+      expect.anything(),
+    );
   });
 
   it('out of stock: reverts the slot to available and errors (no stuck lock)', async () => {
@@ -181,9 +204,16 @@ describe('startRedemption', () => {
     const { startRedemption } = await import('@/features/subscriptions/actions/start-redemption');
     const res = await startRedemption(baseInput);
     expect(res.error).toBeTruthy();
-    // slot reverted back to available
+    // slot reverted back to available with all per-pick PII/config cleared
     expect(spies.redemptionUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ status: 'available' }),
+      expect.objectContaining({
+        status: 'available',
+        frame_variant_id: null,
+        expected_surcharge: 0,
+        is_premium: false,
+        lens_config: {},
+        ship_to: null,
+      }),
     );
     // never created a fulfillment order
     expect(createRedemptionFulfillmentOrder).not.toHaveBeenCalled();
@@ -192,16 +222,17 @@ describe('startRedemption', () => {
   it('surcharge (>0) path: premium frame + addon → pending_payment + checkoutUrl', async () => {
     createCart.mockResolvedValue({ checkoutUrl: 'https://shop/checkout/abc' });
     const spies = install({
-      meta: { subscription_tier: 'premium', subscription_surcharge_variant_id: 9001 },
+      meta: { subscription_tier: 'premium', subscription_surcharge_variant_id: 9001, subscription_surcharge_price: 75 },
       addonOptions: [{ key: 'progressive', shopify_variant_id: 8001, price: 40 }],
     });
     const { startRedemption } = await import('@/features/subscriptions/actions/start-redemption');
     const res = await startRedemption({ ...baseInput, addonKeys: ['progressive'] });
     expect(res.ok).toBe(true);
     expect(res.checkoutUrl).toBe('https://shop/checkout/abc');
-    // pending_payment state with expected_surcharge set on the claim
+    // pending_payment state with expected_surcharge set on the claim — it MUST
+    // include the premium-frame surcharge price (75) PLUS the lens add-on (40).
     expect(spies.claimUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ status: 'locked', expected_surcharge: expect.any(Number), is_premium: true }),
+      expect.objectContaining({ status: 'locked', expected_surcharge: 115, is_premium: true }),
     );
     // moved to pending_payment after reserve
     expect(spies.redemptionUpdate).toHaveBeenCalledWith(
@@ -220,7 +251,7 @@ describe('startRedemption', () => {
   it('persists required surcharge variant ids on lens_config for webhook reconciliation', async () => {
     createCart.mockResolvedValue({ checkoutUrl: 'https://shop/checkout/abc' });
     const spies = install({
-      meta: { subscription_tier: 'premium', subscription_surcharge_variant_id: 9001 },
+      meta: { subscription_tier: 'premium', subscription_surcharge_variant_id: 9001, subscription_surcharge_price: 75 },
       addonOptions: [{ key: 'progressive', shopify_variant_id: 8001, price: 40 }],
     });
     const { startRedemption } = await import('@/features/subscriptions/actions/start-redemption');

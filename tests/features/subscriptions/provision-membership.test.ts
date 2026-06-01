@@ -41,6 +41,24 @@ describe('provisionMembershipFromOrder', () => {
     expect(slotInsert).toHaveBeenCalledTimes(1); // bulk insert of 3 rows
     const slotCalls = slotInsert.mock.calls as unknown as unknown[][];
     expect(slotCalls[0][0]).toHaveLength(3);
+    // the order's settlement currency is persisted onto the membership
+    expect(membershipInsert).toHaveBeenCalledWith(expect.objectContaining({ currency: 'usd' }));
+  });
+
+  it('persists CAD currency from a Canadian membership purchase', async () => {
+    const membershipInsert = vi.fn(() => ({ select: () => ({ maybeSingle: () => Promise.resolve({ data: { id: 'mem-2' }, error: null }) }) }));
+    const slotInsert = vi.fn(() => Promise.resolve({ error: null }));
+    from.mockImplementation((t: string) => {
+      if (t === 'order_line_items') return { select: () => ({ eq: () => Promise.resolve({ data: [{ variant_id: 222, product_id: 111 }], error: null }) }) };
+      if (t === 'subscription_plans') return { select: () => ({ eq: () => Promise.resolve({ data: [activePlan], error: null }) }) };
+      if (t === 'subscription_memberships') return { insert: membershipInsert };
+      if (t === 'subscription_redemptions') return { insert: slotInsert };
+      return table({});
+    });
+    const { provisionMembershipFromOrder } = await import('@/features/subscriptions/provision-membership');
+    const res = await provisionMembershipFromOrder({ id: 'o2', shopify_order_id: 556, customer_id: 'c2', customer_email: 'c@d.com', currency: 'CAD', financial_status: 'paid' } as never, supabase as never);
+    expect(res.provisioned).toBe(true);
+    expect(membershipInsert).toHaveBeenCalledWith(expect.objectContaining({ currency: 'cad' }));
   });
 
   it('does NOT provision when not paid', async () => {

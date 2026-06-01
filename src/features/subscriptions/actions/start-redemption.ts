@@ -58,14 +58,22 @@ export async function startRedemption(
   const supabase = createAdminClient();
 
   // 1. Load the slot + its membership; verify ownership + active membership.
+  // `currency` lives on the membership; `customer_email` is NOT a membership
+  // column — it lives on `customers`, joined here via the FK embed.
   const { data: slot } = await supabase
     .from('subscription_redemptions')
-    .select('id, status, membership_id, subscription_memberships ( id, customer_id, status, currency )')
+    .select('id, status, membership_id, subscription_memberships ( id, customer_id, status, currency, customers ( email ) )')
     .eq('id', input.slotId)
     .maybeSingle();
 
   const membership = (slot as unknown as {
-    subscription_memberships: { id: string; customer_id: string | null; status: string; currency: string | null } | null;
+    subscription_memberships: {
+      id: string;
+      customer_id: string | null;
+      status: string;
+      currency: string | null;
+      customers: { email: string | null } | null;
+    } | null;
   } | null)?.subscription_memberships ?? null;
 
   if (!slot || !membership) return { error: 'This pair is not available.' };
@@ -80,12 +88,13 @@ export async function startRedemption(
   // 2. Compute the surcharge (premium frame surcharge variant + lens add-ons).
   const { data: meta } = await supabase
     .from('product_metadata')
-    .select('subscription_tier, subscription_surcharge_variant_id')
+    .select('subscription_tier, subscription_surcharge_variant_id, subscription_surcharge_price')
     .eq('shopify_variant_id', input.frameVariantId)
     .maybeSingle();
 
   const isPremium = meta?.subscription_tier === 'premium';
   const surchargeVariantId = isPremium ? meta?.subscription_surcharge_variant_id ?? null : null;
+  const premiumSurchargePrice = isPremium ? Number(meta?.subscription_surcharge_price ?? 0) : 0;
 
   const addonKeys = input.addonKeys ?? [];
   let addons: Array<{ shopify_variant_id: number | null; price: number }> = [];
@@ -98,13 +107,12 @@ export async function startRedemption(
   }
 
   const addonTotal = addons.reduce((sum, a) => sum + Number(a.price || 0), 0);
-  // The premium frame's surcharge price is carried by its Shopify variant; we do
-  // not have it server-side without a catalog lookup, so the authoritative price
-  // is whatever Shopify charges. We record the surcharge variant in the cart and
-  // verify the PAID amount against expected on the webhook. For the expected
-  // amount we sum add-on prices; the premium frame surcharge is enforced by the
-  // cart containing the surcharge variant (Shopify holds its price).
-  const expectedSurcharge = addonTotal;
+  // Expected surcharge = premium-frame surcharge (the authoritative
+  // `subscription_surcharge_price`, set post-deploy alongside the surcharge
+  // variant id) + lens add-on prices. The webhook reconciles the PAID subtotal
+  // against this AND requires each surcharge variant to be present (each pinning
+  // its real Shopify-enforced price), so a cheap substitute can't satisfy it.
+  const expectedSurcharge = premiumSurchargePrice + addonTotal;
 
   const hasSurcharge = !!surchargeVariantId || addons.some((a) => a.shopify_variant_id);
 
@@ -155,7 +163,16 @@ export async function startRedemption(
   if (!pool || Number(pool.pool_quantity) <= 0) {
     await supabase
       .from('subscription_redemptions')
-      .update({ status: 'available', frame_variant_id: null, expected_surcharge: 0, is_premium: false })
+      .update({
+        status: 'available',
+        frame_variant_id: null,
+        expected_surcharge: 0,
+        is_premium: false,
+        // Match the abandoned-slot sweeper: clear all per-pick PII/config so a
+        // reverted slot leaves no stale prescription/ship-to behind.
+        lens_config: {} as never,
+        ship_to: null,
+      })
       .eq('id', input.slotId);
     return { error: 'That frame is out of stock. Please choose another.' };
   }

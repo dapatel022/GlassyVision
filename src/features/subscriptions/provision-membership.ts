@@ -66,6 +66,9 @@ export async function provisionMembershipFromOrder(
       customer_id: order.customer_id,
       shopify_order_id: order.shopify_order_id,
       status: 'active',
+      // Settlement currency from the membership purchase — carried onto every
+      // redemption's synthesized fulfillment order so USD vs CAD is correct.
+      currency: (order.currency ?? 'usd').toLowerCase() === 'cad' ? 'cad' : 'usd',
       term_end: termEnd.toISOString(),
       pairs_total: plan.pairs_count,
       redemption_policy: plan.redemption_policy,

@@ -921,6 +921,7 @@ export type Database = {
           max_prescription_power: number | null;
           subscription_tier: string;
           subscription_surcharge_variant_id: number | null;
+          subscription_surcharge_price: number;
           last_synced_at: string;
         };
         Insert: {
@@ -942,6 +943,7 @@ export type Database = {
           max_prescription_power?: number | null;
           subscription_tier?: string;
           subscription_surcharge_variant_id?: number | null;
+          subscription_surcharge_price?: number;
           last_synced_at?: string;
         };
         Update: {
@@ -963,6 +965,7 @@ export type Database = {
           max_prescription_power?: number | null;
           subscription_tier?: string;
           subscription_surcharge_variant_id?: number | null;
+          subscription_surcharge_price?: number;
           last_synced_at?: string;
         };
         Relationships: [];
@@ -1158,6 +1161,7 @@ export type Database = {
           customer_id: string | null;
           shopify_order_id: number;
           status: Database['public']['Enums']['membership_status'];
+          currency: string;
           term_start: string;
           term_end: string;
           pairs_total: number;
@@ -1172,6 +1176,7 @@ export type Database = {
           customer_id?: string | null;
           shopify_order_id: number;
           status?: Database['public']['Enums']['membership_status'];
+          currency?: string;
           term_start?: string;
           term_end: string;
           pairs_total: number;
@@ -1186,6 +1191,7 @@ export type Database = {
           customer_id?: string | null;
           shopify_order_id?: number;
           status?: Database['public']['Enums']['membership_status'];
+          currency?: string;
           term_start?: string;
           term_end?: string;
           pairs_total?: number;
