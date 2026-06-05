@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { startRedemption } from '@/features/subscriptions/actions/start-redemption';
+import { savedAddressToShipTo, type RedeemSavedAddress, type RedeemShipTo } from './ship-to';
 
 export interface FrameOption {
   variantId: number;
@@ -21,23 +22,42 @@ interface Props {
   slotId: string;
   frames: FrameOption[];
   addons: AddonOption[];
+  savedAddresses?: RedeemSavedAddress[];
 }
 
-export default function RedeemForm({ slotId, frames, addons }: Props) {
+const EMPTY_SHIP: RedeemShipTo = {
+  name: '',
+  address1: '',
+  address2: '',
+  city: '',
+  province: '',
+  zip: '',
+  country_code: 'US',
+};
+
+export default function RedeemForm({ slotId, frames, addons, savedAddresses = [] }: Props) {
   const router = useRouter();
   const [frameVariantId, setFrameVariantId] = useState<number | null>(frames[0]?.variantId ?? null);
   const [selectedAddons, setSelectedAddons] = useState<Set<string>>(new Set());
-  const [ship, setShip] = useState({
-    name: '',
-    address1: '',
-    address2: '',
-    city: '',
-    province: '',
-    zip: '',
-    country_code: 'US',
-  });
+  // Prefill from the default saved address if one exists; manual entry stays
+  // available via the "Enter a new address" option.
+  const defaultSaved = savedAddresses.find((a) => a.address) ?? null;
+  const [selectedAddressId, setSelectedAddressId] = useState<string>(defaultSaved?.id ?? 'new');
+  const [ship, setShip] = useState<RedeemShipTo>(
+    defaultSaved ? savedAddressToShipTo(defaultSaved) : { ...EMPTY_SHIP },
+  );
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  function handlePickAddress(id: string) {
+    setSelectedAddressId(id);
+    if (id === 'new') {
+      setShip({ ...EMPTY_SHIP });
+      return;
+    }
+    const saved = savedAddresses.find((a) => a.id === id);
+    if (saved) setShip(savedAddressToShipTo(saved));
+  }
 
   function toggleAddon(key: string) {
     setSelectedAddons((prev) => {
@@ -60,7 +80,7 @@ export default function RedeemForm({ slotId, frames, addons }: Props) {
       slotId,
       frameVariantId,
       lensConfig: {},
-      shipTo: ship,
+      shipTo: { ...ship },
       addonKeys: Array.from(selectedAddons),
     });
     if (result.error) {
@@ -143,6 +163,47 @@ export default function RedeemForm({ slotId, frames, addons }: Props) {
 
       <section className="space-y-3">
         <h2 className="font-sans text-sm font-bold uppercase tracking-widest text-ink">Ship to</h2>
+        {savedAddresses.length > 0 && (
+          <div className="space-y-2">
+            {savedAddresses.map((a) => (
+              <label
+                key={a.id}
+                className={`flex items-center gap-3 border p-3 cursor-pointer ${
+                  selectedAddressId === a.id ? 'border-accent bg-white' : 'border-line bg-white'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="saved-address"
+                  checked={selectedAddressId === a.id}
+                  onChange={() => handlePickAddress(a.id)}
+                />
+                <span className="text-sm text-ink">
+                  <span className="font-sans font-bold">{a.recipientName}</span>
+                  {a.label && <span className="text-muted ml-2">({a.label})</span>}
+                  <span className="block text-muted">
+                    {[a.address.address1, a.address.city, a.address.province, a.address.zip]
+                      .filter(Boolean)
+                      .join(', ')}
+                  </span>
+                </span>
+              </label>
+            ))}
+            <label
+              className={`flex items-center gap-3 border p-3 cursor-pointer ${
+                selectedAddressId === 'new' ? 'border-accent bg-white' : 'border-line bg-white'
+              }`}
+            >
+              <input
+                type="radio"
+                name="saved-address"
+                checked={selectedAddressId === 'new'}
+                onChange={() => handlePickAddress('new')}
+              />
+              <span className="text-sm text-ink font-sans">Enter a new address</span>
+            </label>
+          </div>
+        )}
         <input className={inputClass} placeholder="Full name" value={ship.name}
           onChange={(e) => setShip({ ...ship, name: e.target.value })} required />
         <input className={inputClass} placeholder="Address line 1" value={ship.address1}

@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { getCurrentCustomer } from '@/lib/auth/customer';
 import { createAdminClient } from '@/lib/supabase/admin';
 import RedeemForm, { type FrameOption, type AddonOption } from './redeem-form';
+import type { RedeemSavedAddress } from './ship-to';
 
 export const metadata = { title: 'Redeem a pair' };
 export const dynamic = 'force-dynamic';
@@ -76,6 +77,23 @@ export default async function RedeemPage({ params }: PageProps) {
     price: Number(a.price),
   }));
 
+  // The customer's saved addresses, offered as a picker that prefills ship_to.
+  // The `.eq('customer_id', customer.id)` filter IS the authorization (the
+  // service-role admin client bypasses RLS), mirroring the account pages.
+  const { data: addrRows } = await supabase
+    .from('customer_saved_addresses')
+    .select('id, label, recipient_name, address, is_default, created_at')
+    .eq('customer_id', customer.id)
+    .order('is_default', { ascending: false })
+    .order('created_at', { ascending: false });
+
+  const savedAddresses: RedeemSavedAddress[] = (addrRows ?? []).map((r) => ({
+    id: r.id,
+    label: r.label,
+    recipientName: r.recipient_name,
+    address: (r.address ?? {}) as RedeemSavedAddress['address'],
+  }));
+
   return (
     <main className="min-h-screen bg-base px-6 py-16">
       <div className="max-w-2xl mx-auto space-y-8">
@@ -89,7 +107,7 @@ export default async function RedeemPage({ params }: PageProps) {
           </p>
         </header>
 
-        <RedeemForm slotId={slotId} frames={frames} addons={addons} />
+        <RedeemForm slotId={slotId} frames={frames} addons={addons} savedAddresses={savedAddresses} />
 
         <Link href="/account/subscription" className="inline-block text-xs font-mono text-muted underline">
           ← Back to subscription
