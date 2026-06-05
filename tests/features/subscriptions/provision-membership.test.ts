@@ -1,10 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+const sendEmail = vi.fn(async (_input: { subject: string }) => ({ success: true, providerMessageId: 'msg-1' }));
+vi.mock('@/lib/email/resend', () => ({ sendEmail: (input: { subject: string }) => sendEmail(input) }));
+
 const from = vi.fn();
 const supabase = { from };
 function table(impl: Record<string, unknown>) { return impl; }
 
-beforeEach(() => { from.mockReset(); });
+beforeEach(() => { from.mockReset(); sendEmail.mockClear(); });
 
 const activePlan = {
   id: 'plan-1', shopify_product_id: 111, shopify_variant_id: 222,
@@ -97,5 +100,56 @@ describe('provisionMembershipFromOrder', () => {
     const res = await provisionMembershipFromOrder({ id: 'o1', shopify_order_id: 555, customer_id: 'c1', financial_status: 'paid' } as never, supabase as never);
     expect(res.provisioned).toBe(false);
     expect(slotInsert).not.toHaveBeenCalled();
+  });
+
+  // ---- Task 5.2: lifecycle email sends on provisioning ----
+
+  // Build a full happy-path mock where prior comms are absent (nothing sent yet),
+  // a customer name resolves, and comms claim inserts succeed.
+  function happyMocks(priorComms: Array<{ metadata: unknown; status: string }> = []) {
+    const membershipInsert = vi.fn(() => ({ select: () => ({ maybeSingle: () => Promise.resolve({ data: { id: 'mem-1' }, error: null }) }) }));
+    const slotInsert = vi.fn(() => Promise.resolve({ error: null }));
+    const commsInsert = vi.fn(() => ({ select: () => ({ single: () => Promise.resolve({ data: { id: 'comm-1' }, error: null }) }) }));
+    const commsUpdate = vi.fn(() => ({ eq: () => Promise.resolve({ error: null }) }));
+    from.mockImplementation((t: string) => {
+      if (t === 'order_line_items') return { select: () => ({ eq: () => Promise.resolve({ data: [{ variant_id: 222, product_id: 111 }], error: null }) }) };
+      if (t === 'subscription_plans') return { select: () => ({ eq: () => Promise.resolve({ data: [activePlan], error: null }) }) };
+      if (t === 'subscription_memberships') return { insert: membershipInsert };
+      if (t === 'subscription_redemptions') return { insert: slotInsert };
+      if (t === 'customers') return { select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: { first_name: 'Dev', email: 'a@b.com' }, error: null }) }) }) };
+      if (t === 'communications') return { select: () => ({ eq: () => ({ eq: () => Promise.resolve({ data: priorComms, error: null }) }) }), insert: commsInsert, update: commsUpdate };
+      return table({});
+    });
+    return { membershipInsert, slotInsert, commsInsert, commsUpdate };
+  }
+
+  it('sends a membership_welcome and a slot_unlocked email on first provisioning', async () => {
+    happyMocks();
+    const { provisionMembershipFromOrder } = await import('@/features/subscriptions/provision-membership');
+    const res = await provisionMembershipFromOrder({ id: 'o1', shopify_order_id: 555, customer_id: 'c1', customer_email: 'a@b.com', currency: 'usd', financial_status: 'paid' } as never, supabase as never);
+    expect(res.provisioned).toBe(true);
+    const subjects = sendEmail.mock.calls.map((c) => c[0].subject.toLowerCase());
+    expect(subjects.some((s) => s.includes('welcome'))).toBe(true);
+    expect(subjects.some((s) => s.includes('ready') || s.includes('redeem'))).toBe(true);
+    expect(sendEmail).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not re-send when a welcome+slot comm already exists (idempotent re-delivery)', async () => {
+    happyMocks([
+      { status: 'sent', metadata: { membership_id: 'mem-1', comm: 'membership_welcome' } },
+      { status: 'sent', metadata: { membership_id: 'mem-1', comm: 'slot_unlocked' } },
+    ]);
+    const { provisionMembershipFromOrder } = await import('@/features/subscriptions/provision-membership');
+    const res = await provisionMembershipFromOrder({ id: 'o1', shopify_order_id: 555, customer_id: 'c1', customer_email: 'a@b.com', currency: 'usd', financial_status: 'paid' } as never, supabase as never);
+    expect(res.provisioned).toBe(true);
+    expect(sendEmail).not.toHaveBeenCalled();
+  });
+
+  it('still provisions when the email send path throws (best-effort, non-gating)', async () => {
+    happyMocks();
+    sendEmail.mockRejectedValueOnce(new Error('resend down'));
+    const { provisionMembershipFromOrder } = await import('@/features/subscriptions/provision-membership');
+    const res = await provisionMembershipFromOrder({ id: 'o1', shopify_order_id: 555, customer_id: 'c1', customer_email: 'a@b.com', currency: 'usd', financial_status: 'paid' } as never, supabase as never);
+    expect(res.provisioned).toBe(true);
   });
 });

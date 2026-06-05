@@ -6,6 +6,8 @@ import { createFulfillment } from '@/lib/commerce/shopify-admin';
 import { isRxExpired } from '@/lib/rx/expiration';
 import { isDispensableDestination } from '@/lib/rx/market';
 import { advanceRedemptionForOrder } from '@/features/subscriptions/advance-redemption';
+import { sendEmail } from '@/lib/email/resend';
+import { renderPairShipped } from '@/lib/email/templates/pair-shipped';
 
 export interface CreateShipmentInput {
   jobId: string;
@@ -126,9 +128,24 @@ export async function createShipment(input: CreateShipmentInput): Promise<{ succ
   // Mirror onto a linked subscription redemption and anchor 3-year Rx retention
   // at the ship date. No-op for normal Shopify orders (no redemption links them).
   // Runs after the local shipment + order update succeed — never gates shipment.
-  await advanceRedemptionForOrder(wo.order_id, 'shipped', supabase, {
+  const { advanced } = await advanceRedemptionForOrder(wo.order_id, 'shipped', supabase, {
     retentionAnchor: new Date().toISOString().slice(0, 10),
   });
+
+  // Subscription pairs get a `pair_shipped` email. Best-effort + idempotent —
+  // never gate the shipment we've already recorded. No-op for normal orders
+  // (advanced === false because no redemption is linked to them).
+  if (advanced) {
+    try {
+      await sendPairShippedEmail(supabase, wo.order_id, {
+        carrier: input.carrier,
+        trackingNumber: input.trackingNumber,
+        trackingUrl: input.trackingUrl,
+      });
+    } catch (e) {
+      console.error('[create-shipment] pair_shipped email failed (shipment already recorded)', e);
+    }
+  }
 
   // Best-effort: reflect the shipment in Shopify so the customer receives
   // Shopify's fulfillment + tracking notification. A Shopify failure must never
@@ -157,4 +174,103 @@ export async function createShipment(input: CreateShipmentInput): Promise<{ succ
   }
 
   return { success: true };
+}
+
+/**
+ * Send a `pair_shipped` email for the subscription redemption linked to this
+ * (now-shipped) internal order. Idempotent: a prior non-failed `pair_shipped`
+ * comm for the same redemption short-circuits. Recipient is the membership's
+ * customer. Best-effort — caller wraps in try/catch and never gates shipment.
+ */
+async function sendPairShippedEmail(
+  supabase: ReturnType<typeof createAdminClient>,
+  internalOrderId: string,
+  ship: { carrier: string; trackingNumber: string; trackingUrl?: string },
+): Promise<void> {
+  // Resolve the redemption that this internal order fulfills.
+  const { data: redemptions } = await supabase
+    .from('subscription_redemptions')
+    .select('id, membership_id')
+    .eq('internal_order_id', internalOrderId)
+    .eq('status', 'shipped');
+  const redemption = ((redemptions ?? []) as Array<{ id: string; membership_id: string }>)[0];
+  if (!redemption) return;
+
+  // Idempotency: skip if a non-failed pair_shipped comm already exists for it.
+  const { data: prior } = await supabase
+    .from('communications')
+    .select('metadata, status')
+    .eq('type', 'pair_shipped')
+    .eq('direction', 'outbound');
+  const already = ((prior ?? []) as Array<{ metadata: unknown; status: string }>).some(
+    (c) =>
+      c.status !== 'failed' &&
+      (c.metadata as { redemption_id?: string } | null)?.redemption_id === redemption.id,
+  );
+  if (already) return;
+
+  // Resolve recipient via membership → customer.
+  const { data: membership } = await supabase
+    .from('subscription_memberships')
+    .select('customer_id')
+    .eq('id', redemption.membership_id)
+    .maybeSingle();
+  const customerId = (membership as { customer_id?: string | null } | null)?.customer_id;
+  if (!customerId) return;
+  const { data: customer } = await supabase
+    .from('customers')
+    .select('email')
+    .eq('id', customerId)
+    .maybeSingle();
+  const email = (customer as { email?: string } | null)?.email;
+  if (!email) return;
+
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://glassyvision.com';
+  const trackingUrl = ship.trackingUrl ?? `${baseUrl}/track/${internalOrderId}`;
+  const rendered = renderPairShipped({
+    trackingUrl,
+    carrier: ship.carrier,
+    trackingNumber: ship.trackingNumber,
+  });
+
+  const metadata = { redemption_id: redemption.id, membership_id: redemption.membership_id };
+  const { data: claimed, error: claimError } = await supabase
+    .from('communications')
+    .insert({
+      order_id: internalOrderId,
+      customer_email: email,
+      type: 'pair_shipped',
+      direction: 'outbound',
+      channel: 'email',
+      provider: 'resend',
+      subject: rendered.subject,
+      status: 'queued',
+      metadata,
+    })
+    .select('id')
+    .single();
+  if (claimError || !claimed) return;
+
+  const result = await sendEmail({
+    to: email,
+    subject: rendered.subject,
+    html: rendered.html,
+    text: rendered.text,
+  });
+
+  if (result.success) {
+    await supabase
+      .from('communications')
+      .update({
+        status: 'sent',
+        sent_at: new Date().toISOString(),
+        provider_message_id: result.providerMessageId,
+      })
+      .eq('id', (claimed as { id: string }).id);
+  } else {
+    await supabase
+      .from('communications')
+      .update({ status: 'failed', metadata: { ...metadata, failed_error: result.error } })
+      .eq('id', (claimed as { id: string }).id);
+  }
 }

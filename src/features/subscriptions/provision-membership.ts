@@ -1,4 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { sendEmail } from '@/lib/email/resend';
+import { renderMembershipWelcome } from '@/lib/email/templates/membership-welcome';
+import { renderSlotUnlocked } from '@/lib/email/templates/slot-unlocked';
 
 interface OrderRow {
   id: string;
@@ -101,5 +104,126 @@ export async function provisionMembershipFromOrder(
   }));
   await supabase.from('subscription_redemptions').insert(slots);
 
+  // Best-effort lifecycle emails. NEVER gate provisioning on a mail failure —
+  // the membership + slots are already persisted. Each send is idempotent via a
+  // prior-comm read keyed on (type, metadata.membership_id) so a webhook
+  // re-delivery (orders/paid + orders/updated) does not double-send.
+  try {
+    await sendProvisioningEmails(order, membership.id, plan.pairs_count, allImmediate, supabase);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'unknown';
+    console.error('[provision-membership] lifecycle email send failed (non-gating)', {
+      membershipId: membership.id,
+      error: message,
+    });
+  }
+
   return { provisioned: true, membershipId: membership.id };
+}
+
+/**
+ * Send the `membership_welcome` and (for all-immediate plans) `slot_unlocked`
+ * emails on provisioning. Idempotent: a prior non-failed comm of the same type
+ * for this membership short-circuits the send. Mirrors the cron's best-effort
+ * pre-claim → send → mark pattern, deduped by `metadata.membership_id`.
+ */
+async function sendProvisioningEmails(
+  order: OrderRow,
+  membershipId: string,
+  pairsTotal: number,
+  allImmediate: boolean,
+  supabase: SupabaseClient,
+): Promise<void> {
+  // Resolve recipient + name. Prefer the customer row; fall back to the order's
+  // email so a guest checkout still gets the welcome.
+  let email = order.customer_email ?? null;
+  let firstName = 'there';
+  if (order.customer_id) {
+    const { data: cust } = await supabase
+      .from('customers')
+      .select('first_name, email')
+      .eq('id', order.customer_id)
+      .maybeSingle();
+    const c = cust as { first_name?: string | null; email?: string | null } | null;
+    if (c?.email) email = c.email;
+    if (c?.first_name && c.first_name.trim()) firstName = c.first_name.trim();
+  }
+  if (!email) return;
+
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://glassyvision.com';
+  const manageUrl = `${baseUrl}/account/subscription`;
+
+  const welcome = renderMembershipWelcome({ memberName: firstName, pairsTotal, manageUrl });
+  await maybeSendComm(supabase, membershipId, 'membership_welcome', email, welcome);
+
+  if (allImmediate) {
+    const slot = renderSlotUnlocked({ memberName: firstName, redeemUrl: manageUrl });
+    await maybeSendComm(supabase, membershipId, 'slot_unlocked', email, slot);
+  }
+}
+
+/**
+ * Pre-claim a `communications` row (deduped on type + metadata.membership_id),
+ * send the email, then mark sent/failed. No-op when a non-failed comm already
+ * exists for this (type, membership).
+ */
+async function maybeSendComm(
+  supabase: SupabaseClient,
+  membershipId: string,
+  type: 'membership_welcome' | 'slot_unlocked',
+  email: string,
+  rendered: { subject: string; html: string; text: string },
+): Promise<void> {
+  const { data: prior } = await supabase
+    .from('communications')
+    .select('metadata, status')
+    .eq('type', type)
+    .eq('direction', 'outbound');
+  const already = ((prior ?? []) as Array<{ metadata: unknown; status: string }>).some(
+    (c) =>
+      c.status !== 'failed' &&
+      (c.metadata as { membership_id?: string } | null)?.membership_id === membershipId,
+  );
+  if (already) return;
+
+  const metadata = { membership_id: membershipId };
+  const { data: claimed, error: claimError } = await supabase
+    .from('communications')
+    .insert({
+      order_id: null,
+      customer_email: email,
+      type,
+      direction: 'outbound',
+      channel: 'email',
+      provider: 'resend',
+      subject: rendered.subject,
+      status: 'queued',
+      metadata,
+    })
+    .select('id')
+    .single();
+  if (claimError || !claimed) return;
+
+  const result = await sendEmail({
+    to: email,
+    subject: rendered.subject,
+    html: rendered.html,
+    text: rendered.text,
+  });
+
+  if (result.success) {
+    await supabase
+      .from('communications')
+      .update({
+        status: 'sent',
+        sent_at: new Date().toISOString(),
+        provider_message_id: result.providerMessageId,
+      })
+      .eq('id', (claimed as { id: string }).id);
+  } else {
+    await supabase
+      .from('communications')
+      .update({ status: 'failed', metadata: { ...metadata, failed_error: result.error } })
+      .eq('id', (claimed as { id: string }).id);
+  }
 }
