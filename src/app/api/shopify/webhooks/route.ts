@@ -5,6 +5,7 @@ import { syncShopifyOrder, type ShopifyOrderPayload } from '@/lib/commerce/sync'
 import { provisionMembershipFromOrder } from '@/features/subscriptions/provision-membership';
 import { confirmAddonPayment } from '@/features/subscriptions/confirm-addon-payment';
 import { handleRefundWebhook } from '@/features/subscriptions/webhooks/handle-refund';
+import { handleDisputeWebhook } from '@/features/subscriptions/webhooks/handle-dispute';
 import { anonymizeCustomer } from '@/features/account/actions/anonymize-customer';
 import type { Json } from '@/lib/supabase/types';
 
@@ -122,6 +123,14 @@ export async function POST(request: NextRequest) {
         // add-on refund → that redemption reverted to `available` + stock freed.
         // Idempotent + a safe no-op for non-subscription orders.
         await handleRefundWebhook(payload as { order_id?: number | null }, supabase);
+        break;
+      }
+      case 'disputes/create': {
+        // A chargeback against a membership purchase order freezes the
+        // membership (`status='disputed'`) so no further slots can be redeemed
+        // while the dispute is contested. No automatic refund — admin resolves
+        // it manually. Idempotent + a safe no-op for non-subscription orders.
+        await handleDisputeWebhook(payload as { order_id?: number | null }, supabase);
         break;
       }
       case 'orders/cancelled': {
