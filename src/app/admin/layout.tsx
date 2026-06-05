@@ -30,6 +30,8 @@ export default async function AdminLayout({
           <nav className="hidden md:flex items-center gap-4 text-xs font-mono">
             <Link href="/admin" className="text-muted-soft hover:text-white transition">Dashboard</Link>
             <Link href="/admin/rx-queue" className="text-muted-soft hover:text-white transition">Rx Queue</Link>
+            <Link href="/admin/plans" className="text-muted-soft hover:text-white transition">Plans</Link>
+            <Link href="/admin/memberships" className="text-muted-soft hover:text-white transition">Memberships</Link>
             <Link href="/admin/drops" className="text-muted-soft hover:text-white transition">Drops</Link>
             <Link href="/admin/inventory" className="text-muted-soft hover:text-white transition">Inventory</Link>
             <Link href="/admin/returns" className="text-muted-soft hover:text-white transition">Returns</Link>
