@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { syncShopifyOrder, type ShopifyOrderPayload } from '@/lib/commerce/sync';
 import { provisionMembershipFromOrder } from '@/features/subscriptions/provision-membership';
 import { confirmAddonPayment } from '@/features/subscriptions/confirm-addon-payment';
+import { handleRefundWebhook } from '@/features/subscriptions/webhooks/handle-refund';
 import { anonymizeCustomer } from '@/features/account/actions/anonymize-customer';
 import type { Json } from '@/lib/supabase/types';
 
@@ -112,6 +113,15 @@ export async function POST(request: NextRequest) {
             await provisionMembershipFromOrder(orderRow, supabase);
           }
         }
+        break;
+      }
+      case 'refunds/create': {
+        // A refund issued in the Shopify admin must reach Supabase or a refunded
+        // customer's subscription slots stay redeemable (= free glasses).
+        // Membership refund → membership `refunded` + uncommitted slots expired;
+        // add-on refund → that redemption reverted to `available` + stock freed.
+        // Idempotent + a safe no-op for non-subscription orders.
+        await handleRefundWebhook(payload as { order_id?: number | null }, supabase);
         break;
       }
       case 'orders/cancelled': {
