@@ -8,6 +8,8 @@ import type {
   EndOfTermMembership,
   EndOfTermPolicy,
 } from '@/features/subscriptions/lib/end-of-term';
+import { renderExpiryWarning } from '@/lib/email/templates/expiry-warning';
+import { renderRenewalOffer } from '@/lib/email/templates/renewal-offer';
 import type { Database, Json } from '@/lib/supabase/types';
 
 export const dynamic = 'force-dynamic';
@@ -86,42 +88,6 @@ function selectReminderDay(
     .find((d) => daysUntilTermEnd <= d);
   if (tightest === undefined) return null;
   return sentDays.includes(tightest) ? null : tightest;
-}
-
-function renderExpiryWarning(daysLeft: number, manageUrl: string): {
-  subject: string;
-  html: string;
-  text: string;
-} {
-  const subject = `Your GlassyVision membership ends in ${daysLeft} day${daysLeft === 1 ? '' : 's'}`;
-  const safeUrl = manageUrl
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-  const html = `<!doctype html><html><body style="font-family: -apple-system, system-ui, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #1a1a1a;">
-  <h1 style="font-size: 20px; font-weight: 800; text-transform: uppercase; margin: 0 0 24px 0;">GlassyVision</h1>
-  <p style="font-size: 16px; line-height: 1.5;">Your membership term ends in <strong>${daysLeft} day${daysLeft === 1 ? '' : 's'}</strong>. Redeem any remaining pairs before then.</p>
-  <p style="margin: 24px 0;"><a href="${safeUrl}" style="display:inline-block;padding:12px 24px;background:#1a1a1a;color:#fff;text-decoration:none;font-weight:700;border-radius:6px;">Redeem your pairs</a></p>
-</body></html>`;
-  const text = `Your GlassyVision membership ends in ${daysLeft} day(s). Redeem any remaining pairs: ${manageUrl}`;
-  return { subject, html, text };
-}
-
-function renderRenewalOffer(manageUrl: string): { subject: string; html: string; text: string } {
-  const subject = `Your GlassyVision membership has ended — renew for another year`;
-  const safeUrl = manageUrl
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-  const html = `<!doctype html><html><body style="font-family: -apple-system, system-ui, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #1a1a1a;">
-  <h1 style="font-size: 20px; font-weight: 800; text-transform: uppercase; margin: 0 0 24px 0;">GlassyVision</h1>
-  <p style="font-size: 16px; line-height: 1.5;">Your membership term has ended. Renew to keep getting fresh frames every term.</p>
-  <p style="margin: 24px 0;"><a href="${safeUrl}" style="display:inline-block;padding:12px 24px;background:#1a1a1a;color:#fff;text-decoration:none;font-weight:700;border-radius:6px;">Renew membership</a></p>
-</body></html>`;
-  const text = `Your GlassyVision membership has ended. Renew: ${manageUrl}`;
-  return { subject, html, text };
 }
 
 /**
@@ -275,10 +241,10 @@ export async function GET(request: Request): Promise<Response> {
 
         const day = selectReminderDay(daysUntil, reminderDays, sentDays);
         if (day !== null) {
-          const rendered = renderExpiryWarning(
-            Math.max(daysUntil, 0),
-            `${baseUrl}/account/subscription`,
-          );
+          const rendered = renderExpiryWarning({
+            daysLeft: Math.max(daysUntil, 0),
+            manageUrl: `${baseUrl}/account/subscription`,
+          });
           const sentOk = await sendLifecycleEmail(
             supabase,
             m,
@@ -330,7 +296,7 @@ async function maybeSendLifecycle(
       (c.metadata as { membership_id?: string } | null)?.membership_id === m.id,
   );
   if (already) return;
-  const rendered = renderRenewalOffer(`${baseUrl}/account/subscription`);
+  const rendered = renderRenewalOffer({ renewUrl: `${baseUrl}/account/subscription` });
   await sendLifecycleEmail(supabase, m, type, null, rendered, errors);
 }
 
