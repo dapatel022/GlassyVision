@@ -8,12 +8,16 @@ Owner key: **[Claude]** = I can do it in code/config · **[You]** = needs your
 action (Shopify admin, accounts, business) · **[Joint]** = I prepare, you provide
 secrets/clicks.
 
-Status (updated end of 2026-05-31): hardening **merged to main**; **customer
-accounts** (sub-project 0) and **subscription core** (sub-project 1) built +
-merged. **241 unit tests green**, 30 migrations apply (`supabase db reset`
-clean), compliance + money gates reviewed (multiple security passes). `main` is
-**local-only — 47 commits ahead of origin, NOT pushed**; NOT yet deployed; runs
-on mock/empty catalog until Shopify is wired.
+Status (updated 2026-06-05): hardening **merged to main**; **customer accounts**
+(sub-project 0) and **subscription core** (sub-project 1) built + merged.
+**Subscription completion** (sub-projects 2 money-hardening + 3 lifecycle/admin)
+and the **account gaps** (one-time order history, saved addresses) are built +
+TDD-tested on branch `feature/subscription-account-completion` (**351 unit tests
+green**, tsc + lint clean; adversarial review + hardening pass closed 4 blocking
++ 5 non-blocking findings). Migration count is now **31** — `00031` validated by
+inspection only (no Supabase CLI locally; runs against cloud per §1B). `main` is
+**local-only — NOT pushed to origin**; NOT yet deployed; runs on mock/empty
+catalog until Shopify is wired.
 
 ---
 
@@ -28,14 +32,14 @@ end-to-end testing is a Shopify **dev** store — everything else here unblocks 
 - [ ] **[You]** Push `main` to origin when ready (`git push origin main` — 47 commits unpushed).
 
 ### 1B. Stand up the real backend (production Supabase)
-- [ ] **[Joint]** Create a Supabase **cloud** project; I run all 26 migrations + storage buckets + RLS against it.
+- [ ] **[Joint]** Create a Supabase **cloud** project; I run all 31 migrations + storage buckets + RLS against it. (Includes `00031` — membership lifecycle cols, `customer_saved_addresses`, guard trigger — not yet applied against any DB.)
 - [ ] **[Joint]** Run `supabase gen types` against the cloud DB to replace the hand-written `types.ts` (it's currently maintained by hand).
 - [ ] **[You]** Confirm Storage buckets (`rx-files` PRIVATE, `qc-photos`, `work-orders`) and their access policies in the cloud project.
 
 ### 1C. Shopify DEV store (free Partner dev store) — the end-to-end enabler
 - [ ] **[You]** Create a Shopify Partner **dev store**; add 3–4 real-ish products with variants, prices, images, and the metafields the app reads (`custom.is_rx_capable`, `frame_eye_size`, `frame_bridge`, `frame_temple_length`).
 - [ ] **[You]** Generate Storefront API + Admin API tokens; give me the values to put in env (or set them yourself).
-- [ ] **[You/Joint]** Register webhooks → our endpoint `/api/shopify/webhooks` for `orders/create`, `orders/updated`, **`orders/paid`** (NEW — required for membership provisioning + add-on payment confirmation), `orders/cancelled`, `products/update`, and the GDPR topics **`customers/redact`** + **`shop/redact`** (NEW — drive the account anonymizer). HMAC secret into `SHOPIFY_WEBHOOK_SECRET`.
+- [ ] **[You/Joint]** Register webhooks → our endpoint `/api/shopify/webhooks` for `orders/create`, `orders/updated`, **`orders/paid`** (membership provisioning + add-on payment confirmation), `orders/cancelled`, `products/update`, **`refunds/create`** (NEW — expires subscription slots on a Shopify-side refund so a refunded membership can't keep redeeming = free glasses), **`disputes/create`** (NEW — freezes a disputed membership pending manual admin review), and the GDPR topics **`customers/redact`** + **`shop/redact`** (account anonymizer). HMAC secret into `SHOPIFY_WEBHOOK_SECRET`.
 - [ ] **[You]** Enable Shopify test-mode payments (Bogus Gateway) so checkout completes without real money.
 
 ### 1D. Secrets / services
@@ -64,19 +68,22 @@ The subscription engine is built + merged (provisioning → redemption → synth
 - [ ] **[You/Claude]** For **premium frames**: tag frames `product_metadata.subscription_tier='premium'`, create a surcharge variant in Shopify, and set `subscription_surcharge_variant_id` + `subscription_surcharge_price` on those rows. Frames left `included` are fully covered.
 - [ ] **[You/Joint]** Register the **`orders/paid`** webhook (above) — without it, memberships never provision and add-on payments never confirm.
 - [ ] **[Joint]** Confirm the **sweep-redemptions cron** runs (already in `vercel.json`, `*/15 * * * *`, authed by `CRON_SECRET`) — releases abandoned add-on checkouts.
+- [ ] **[Joint]** Confirm the **membership-expiry cron** runs (NEW — in `vercel.json`, `0 6 * * *`, authed by `CRON_SECRET`) — sends expiry-warning reminders, moves `active → grace → expired/refunded/rolled-over` at term end, applies each plan's `end_of_term_policy.mode`.
 - [ ] **[Claude/You]** E2E subscription test on staging: buy membership (Shopify test pay) → `orders/paid` provisions membership + 3 slots → log in (magic link) → dashboard shows slots → redeem a covered pair → synthesized order → Rx → lab → ship; then redeem a premium/upgrade pair → add-on checkout → amount-verified confirmation → fulfillment.
 - [ ] **[Decision]** Membership **price** and per-pair value; **tax treatment** of a prepaid bundle (accountant); **gating** (open vs invite/drop — currently open).
 
-### Subscription follow-on builds (deferred, separate specs)
-- [ ] **Sub-project 2** — refund/dispute webhooks, end-of-term refund/rollover/expire engine, membership cancel/pause/grace + expiry reminders. (Needs your refund/cancellation policy decisions first.)
-- [ ] **Admin** — plan-builder UI + multi-plan + membership-management dashboard (one plan is seeded via migration for now).
+### Subscription follow-on builds
+- [x] **Sub-project 2 — DONE** (branch `feature/subscription-account-completion`): `createRefund` calculate-then-refund (over-refund bug fixed), `refunds/create` + `disputes/create` webhooks, pro-rata refund math (base = original captured), inventory release on slot expiry.
+- [x] **Sub-project 3 — DONE** (same branch): end-of-term engine (expire/refund/rollover — seeded live default = refund; rollover = one-time term extension), `membership-expiry` cron (reminders/grace/terminal), admin pro-rata cancellation, 5 lifecycle email types, **admin plan-builder (multi-plan CRUD) + membership-management dashboard**.
+- [ ] **Still deferred (phase-2 recurring seam):** auto-billing / re-purchase renewal, multi-term rollover, user-initiated pause/freeze, reuse-stored-Rx carry-forward. (`pause` enum room exists; no logic — intentional YAGNI.)
+- [ ] **[Decision — open]** End-of-term default is seeded as `refund`; confirm/adjust per plan in the new admin plan-builder.
 
 ---
 
 ## PRIORITY 2 — Code feature gaps a professional Rx site expects
 
 Decide build-now vs defer for each (most can be post-launch).
-- [x] **[DONE]** Customer accounts / login — BUILT (sub-project 0): Supabase Auth magic-link, `customers.auth_user_id`, verified-email account claim, customer RLS, `/account` + `/account/subscription`. (Order history for one-time purchases still deferred.)
+- [x] **[DONE]** Customer accounts / login — BUILT (sub-project 0): Supabase Auth magic-link, `customers.auth_user_id`, verified-email account claim, customer RLS, `/account` + `/account/subscription`. **Account gaps now also DONE** (branch `feature/subscription-account-completion`): one-time **order history** (`/account/orders`) and **saved addresses** (`/account/addresses` + redeem-flow prefill, RLS-scoped).
 - [ ] **[Decision]** Insurance / FSA-HSA support (common for US Rx) — likely defer to post-launch.
 - [ ] **[Claude]** Deeper optical validation in auto-checks (PD/sphere/cyl/axis/prism ranges, high-index thresholds, progressive fitting/segment heights) — scope TBD.
 - [ ] **[Claude]** Order-confirmation + status emails beyond Rx reminders (confirm Shopify covers, or add).
