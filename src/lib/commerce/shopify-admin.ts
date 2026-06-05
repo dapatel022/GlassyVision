@@ -1,34 +1,7 @@
 import { fetchWithRetry } from './fetch-with-retry';
+import { adminFetch, ADMIN_API_VERSION } from './admin-fetch';
 
-const ADMIN_API_VERSION = '2025-01';
-
-export async function adminFetch<T>(
-  endpoint: string,
-  options: { method?: string; body?: unknown } = {},
-): Promise<T> {
-  const domain = process.env.SHOPIFY_STORE_DOMAIN!;
-  const token = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN!;
-  const method = options.method || 'GET';
-
-  const response = await fetchWithRetry(
-    `https://${domain}/admin/api/${ADMIN_API_VERSION}/${endpoint}`,
-    {
-      method,
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Shopify-Access-Token': token,
-      },
-      ...(options.body ? { body: JSON.stringify(options.body) } : {}),
-    },
-  );
-
-  if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error(`Admin API error: ${response.status} ${errorBody}`);
-  }
-
-  return response.json() as Promise<T>;
-}
+export { adminFetch };
 
 /**
  * Extracts the `page_info` cursor for the next page from a Shopify REST
@@ -97,20 +70,51 @@ export async function createFulfillment(
   });
 }
 
+/**
+ * Ask Shopify what a refund of `amount` against `orderId` would look like.
+ * Returns the suggested `shipping` and the `suggested_refund` transaction(s)
+ * so we never hardcode shipping=0 or over-refund past what is captured.
+ */
+export async function calculateRefund(orderId: number, amount: number, currency: string) {
+  return adminFetch(`orders/${orderId}/refunds/calculate.json`, {
+    method: 'POST',
+    body: { refund: { currency, shipping: { full_refund: false }, transactions: [{ kind: 'refund' }] } },
+  }) as Promise<{
+    refund: {
+      shipping?: { amount: string };
+      transactions: Array<{ kind: string; amount: string; parent_id?: number; gateway?: string }>;
+    };
+  }>;
+}
+
 export async function createRefund(
   orderId: number,
   amount: number,
   currency: string,
   note: string,
 ) {
+  const calc = await calculateRefund(orderId, amount, currency);
+  const suggested =
+    calc.refund.transactions.find((t) => t.kind === 'suggested_refund') ?? calc.refund.transactions[0];
+  const suggestedAmount = suggested ? parseFloat(suggested.amount) : Infinity;
+  if (amount > suggestedAmount + 0.001) {
+    throw new Error(`refund amount ${amount} exceeds refundable ${suggestedAmount} for order ${orderId}`);
+  }
   return adminFetch(`orders/${orderId}/refunds.json`, {
     method: 'POST',
     body: {
       refund: {
         currency,
         note,
-        shipping: { amount: '0.00' },
-        transactions: [{ kind: 'refund', amount: amount.toFixed(2) }],
+        shipping: calc.refund.shipping ?? { amount: '0.00' },
+        transactions: [
+          {
+            kind: 'refund',
+            amount: amount.toFixed(2),
+            parent_id: suggested?.parent_id,
+            gateway: suggested?.gateway,
+          },
+        ],
       },
     },
   });
