@@ -66,10 +66,12 @@ function mockSupabase(opts: {
         return {
           select: () => ({
             eq: (_c: string, id: string) => ({
-              // status list for this membership
+              // status list for this membership (status-count read)
               then: (resolve: (v: unknown) => void) =>
                 resolve({ data: opts.redemptions[id] ?? [], error: null }),
               in: () => Promise.resolve({ error: null }),
+              // releaseReservedSlots read: .eq('status','pending_payment').not(...)
+              eq: () => ({ not: () => Promise.resolve({ data: [], error: null }) }),
             }),
           }),
           update: (values: Record<string, unknown>) => {
@@ -252,6 +254,82 @@ describe('membership-expiry cron', () => {
     ).toBe(true);
   });
 
+  it('reports an error (not success) when the terminal membership update is rejected by the guard', async () => {
+    // No committed slot is visible at count time, but the terminal membership
+    // update is rejected (a slot raced into a committed state). applyEndOfTerm
+    // must surface it and the cron must record it as an error — NOT count `ended`
+    // or report success — even though slots were already expired and (refund
+    // mode) a refund already went out.
+    const termEnd = new Date(NOW.getTime() - 20 * 86400_000).toISOString();
+    const graceStart = new Date(NOW.getTime() - 20 * 86400_000).toISOString();
+
+    const updates: Array<{ table: string; values: Record<string, unknown> }> = [];
+    const client = {
+      from(table: string) {
+        if (table === 'subscription_memberships') {
+          return {
+            select: () => ({
+              in: () =>
+                Promise.resolve({
+                  data: [
+                    {
+                      id: 'mem-9',
+                      status: 'grace',
+                      customer_id: 'cust-9',
+                      shopify_order_id: 999,
+                      currency: 'USD',
+                      pairs_total: 3,
+                      term_start: '2025-06-15T00:00:00.000Z',
+                      term_end: termEnd,
+                      term_months: 12,
+                      rollover_count: 0,
+                      grace_start: graceStart,
+                      end_of_term_policy: { mode: 'refund', reminder_days: [], grace_days: 14 },
+                    },
+                  ],
+                  error: null,
+                }),
+            }),
+            update: (values: Record<string, unknown>) => {
+              updates.push({ table, values });
+              // Simulate the DB guard raising on the terminal transition.
+              return {
+                eq: () =>
+                  Promise.resolve({
+                    error: { message: 'cannot set membership mem-9 to refunded while a slot is committed' },
+                  }),
+              };
+            },
+          };
+        }
+        if (table === 'subscription_redemptions') {
+          return {
+            select: () => ({
+              eq: () => ({
+                then: (resolve: (v: unknown) => void) =>
+                  resolve({ data: [{ status: 'available' }, { status: 'available' }], error: null }),
+                // releaseReservedSlots: .eq().eq().not()
+                eq: () => ({ not: () => Promise.resolve({ data: [], error: null }) }),
+                in: () => Promise.resolve({ error: null }),
+              }),
+            }),
+            update: () => ({ eq: () => ({ in: () => Promise.resolve({ error: null }) }) }),
+          };
+        }
+        return {};
+      },
+    };
+    createAdminClient.mockReturnValue(client);
+
+    const res = await GET(req('test-secret'));
+    const body = await res.json();
+    expect(res.status).toBe(500);
+    expect(body.success).toBe(false);
+    expect(body.ended).toBe(0);
+    expect(body.errors.length).toBeGreaterThan(0);
+    expect(body.errors[0].membershipId).toBe('mem-9');
+  });
+
   it('skips end-of-term while a slot is committed (guard)', async () => {
     const termEnd = new Date(NOW.getTime() - 20 * 86400_000).toISOString();
     const graceStart = new Date(NOW.getTime() - 20 * 86400_000).toISOString();
@@ -282,5 +360,124 @@ describe('membership-expiry cron', () => {
         (u) => u.table === 'subscription_memberships' && u.values.status === 'refunded',
       ),
     ).toBe(false);
+  });
+
+  it('treats a live pending_payment slot as UNCOMMITTED: end-of-term proceeds and releases its reservation', async () => {
+    // Finding 2 reconciliation: pending_payment is NOT committed. With only a
+    // pending_payment slot live, the membership reaches its terminal state (it is
+    // NOT skipped/blocked) — its reserved frame unit is released first.
+    const termEnd = new Date(NOW.getTime() - 20 * 86400_000).toISOString();
+    const graceStart = new Date(NOW.getTime() - 20 * 86400_000).toISOString();
+
+    const updates: Array<{ table: string; values: Record<string, unknown> }> = [];
+    const inserts: Array<{ table: string; values: Record<string, unknown> }> = [];
+    const client = {
+      from(table: string) {
+        if (table === 'subscription_memberships') {
+          return {
+            select: () => ({
+              in: () =>
+                Promise.resolve({
+                  data: [
+                    {
+                      id: 'mem-pp',
+                      status: 'grace',
+                      customer_id: 'cust-pp',
+                      shopify_order_id: 321,
+                      currency: 'USD',
+                      pairs_total: 3,
+                      term_start: '2025-06-15T00:00:00.000Z',
+                      term_end: termEnd,
+                      term_months: 12,
+                      rollover_count: 0,
+                      grace_start: graceStart,
+                      end_of_term_policy: { mode: 'expire', reminder_days: [], grace_days: 14 },
+                    },
+                  ],
+                  error: null,
+                }),
+            }),
+            update: (values: Record<string, unknown>) => {
+              updates.push({ table, values });
+              return { eq: () => Promise.resolve({ error: null }) };
+            },
+          };
+        }
+        if (table === 'subscription_redemptions') {
+          return {
+            select: () => ({
+              eq: () => ({
+                // status-count read: one pending_payment slot (no committed slots)
+                then: (resolve: (v: unknown) => void) =>
+                  resolve({ data: [{ status: 'pending_payment' }], error: null }),
+                // releaseReservedSlots read: the reserved pending_payment slot
+                eq: () => ({
+                  not: () =>
+                    Promise.resolve({ data: [{ id: 'slot-pp', frame_variant_id: 222 }], error: null }),
+                }),
+                in: () => Promise.resolve({ error: null }),
+              }),
+            }),
+            update: (values: Record<string, unknown>) => {
+              updates.push({ table, values });
+              return { eq: () => ({ in: () => Promise.resolve({ error: null }) }) };
+            },
+          };
+        }
+        if (table === 'inventory_pool') {
+          return {
+            select: () => ({
+              eq: () => ({ maybeSingle: () => Promise.resolve({ data: { id: 'pool-pp', pool_quantity: 1 }, error: null }) }),
+            }),
+            update: (values: Record<string, unknown>) => {
+              updates.push({ table, values });
+              return { eq: () => Promise.resolve({ error: null }) };
+            },
+          };
+        }
+        if (table === 'inventory_adjustments') {
+          return {
+            insert: (values: Record<string, unknown>) => {
+              inserts.push({ table, values });
+              return Promise.resolve({ error: null });
+            },
+          };
+        }
+        if (table === 'customers') {
+          return {
+            select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: { email: 'a@b.com' }, error: null }) }) }),
+          };
+        }
+        if (table === 'communications') {
+          return {
+            select: () => ({ eq: () => ({ eq: () => Promise.resolve({ data: [], error: null }) }) }),
+            insert: () => ({ select: () => ({ single: () => Promise.resolve({ data: { id: 'c1' }, error: null }) }) }),
+            update: () => ({ eq: () => Promise.resolve({ error: null }) }),
+          };
+        }
+        return {};
+      },
+    };
+    createAdminClient.mockReturnValue(client);
+
+    const res = await GET(req('test-secret'));
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.skipped).toBe(0);
+    expect(body.ended).toBe(1);
+    // Terminal transition proceeded (NOT blocked).
+    expect(
+      updates.some((u) => u.table === 'subscription_memberships' && u.values.status === 'expired'),
+    ).toBe(true);
+    // The pending_payment reservation was released.
+    expect(
+      inserts.some(
+        (i) =>
+          i.table === 'inventory_adjustments' &&
+          i.values.delta === 1 &&
+          i.values.reason === 'subscription_release',
+      ),
+    ).toBe(true);
   });
 });

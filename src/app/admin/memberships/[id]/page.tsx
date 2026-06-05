@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
-import { getCurrentUser } from '@/lib/auth/middleware';
+import { getCurrentUser, isAdminRole } from '@/lib/auth/middleware';
 import { createAdminClient } from '@/lib/supabase/admin';
 import MembershipActions from '@/features/admin/memberships/components/MembershipActions';
 
@@ -17,6 +17,7 @@ function daysBetween(target: string): number {
 export default async function MembershipDetailPage({ params }: PageProps) {
   const user = await getCurrentUser();
   if (!user) redirect('/login');
+  if (!isAdminRole(user.role)) redirect('/unauthorized');
 
   const { id } = await params;
   const supabase = createAdminClient();

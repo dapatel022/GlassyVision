@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { getCurrentUser } from '@/lib/auth/middleware';
+import { getCurrentUser, isAdminRole } from '@/lib/auth/middleware';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
@@ -8,6 +8,7 @@ export const dynamic = 'force-dynamic';
 export default async function PlansAdminPage() {
   const user = await getCurrentUser();
   if (!user) redirect('/login?redirect=/admin/plans');
+  if (!isAdminRole(user.role)) redirect('/unauthorized');
 
   const supabase = createAdminClient();
   const { data: plans } = await supabase

@@ -31,10 +31,17 @@ export interface EndOfTermDeps {
   now: () => Date;
   /** Actual amount captured by Shopify for the membership order, this currency. */
   capturedAmount: number;
-  /** Expire all uncommitted (`available`/`locked`/`pending_payment`) slots for a membership. */
+  /**
+   * Expire all uncommitted (`available`/`locked`/`pending_payment`) slots for a
+   * membership, FIRST releasing any inventory reserved by `pending_payment` slots.
+   */
   expireUncommittedSlots: (membershipId: string) => Promise<void>;
-  /** Patch the membership row (status / term_end / rollover_count / grace fields). */
-  setMembership: (membershipId: string, patch: Record<string, unknown>) => Promise<void>;
+  /**
+   * Patch the membership row (status / term_end / rollover_count / grace fields).
+   * Returns the DB error (if any) so the caller can surface a guard-trigger raise
+   * instead of silently counting a blocked terminal transition as success.
+   */
+  setMembership: (membershipId: string, patch: Record<string, unknown>) => Promise<{ error?: { message: string } | null }>;
   /** Issue a refund via the fixed, calculate-then-refund Shopify path. */
   createRefund: (orderId: number, amount: number, currency: string, note: string) => Promise<unknown>;
 }
@@ -88,11 +95,14 @@ export async function applyEndOfTerm({
 
   // Rollover that hasn't been used yet → extend once, stay active.
   if (mode === 'rollover' && membership.rollover_count < 1) {
-    await deps.setMembership(membership.id, {
+    const { error } = await deps.setMembership(membership.id, {
       status: 'active',
       rollover_count: membership.rollover_count + 1,
       term_end: addMonthsIso(membership.term_end, membership.term_months),
     });
+    if (error) {
+      throw new Error(`End-of-term rollover update failed for membership ${membership.id}: ${error.message}`);
+    }
     return { mode: 'rollover' };
   }
 
@@ -112,12 +122,25 @@ export async function applyEndOfTerm({
       );
     }
     await deps.expireUncommittedSlots(membership.id);
-    await deps.setMembership(membership.id, { status: 'refunded' });
+    const { error } = await deps.setMembership(membership.id, { status: 'refunded' });
+    if (error) {
+      // The DB guard raised (a slot raced into a committed state). The refund has
+      // already gone out and slots were already expired — surface the failure so
+      // the cron records it as an error rather than counting a false success.
+      throw new Error(
+        `Membership ${membership.id} refund issued but terminal transition blocked: ${error.message}`,
+      );
+    }
     return { mode: 'refund', expired: uncommittedCount, refundAmount };
   }
 
   // Default / rollover-exhausted: plain expire.
   await deps.expireUncommittedSlots(membership.id);
-  await deps.setMembership(membership.id, { status: 'expired' });
+  const { error } = await deps.setMembership(membership.id, { status: 'expired' });
+  if (error) {
+    throw new Error(
+      `Membership ${membership.id} terminal expire transition blocked: ${error.message}`,
+    );
+  }
   return { mode: 'expire', expired: uncommittedCount };
 }

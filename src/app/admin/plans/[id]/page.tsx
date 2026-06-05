@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
-import { getCurrentUser } from '@/lib/auth/middleware';
+import { getCurrentUser, isAdminRole } from '@/lib/auth/middleware';
 import { createAdminClient } from '@/lib/supabase/admin';
 import PlanForm from '@/features/admin/plans/components/PlanForm';
 
@@ -15,6 +15,7 @@ interface PageProps {
 export default async function EditPlanPage({ params }: PageProps) {
   const user = await getCurrentUser();
   if (!user) redirect('/login');
+  if (!isAdminRole(user.role)) redirect('/unauthorized');
 
   const { id } = await params;
   if (id === 'new') redirect('/admin/plans/new');

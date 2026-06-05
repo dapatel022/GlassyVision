@@ -26,7 +26,7 @@ function makeDeps(capturedAmount = 150): {
   createRefund: ReturnType<typeof vi.fn>;
 } {
   const expireSlots = vi.fn().mockResolvedValue(undefined);
-  const setMembership = vi.fn().mockResolvedValue(undefined);
+  const setMembership = vi.fn().mockResolvedValue({ error: null });
   const createRefund = vi.fn().mockResolvedValue(undefined);
   const deps: EndOfTermDeps = {
     now: () => new Date('2026-06-15T00:00:00.000Z'),
@@ -101,6 +101,39 @@ describe('applyEndOfTerm', () => {
       'mem-1',
       expect.objectContaining({ status: 'active', rollover_count: 1, term_end: '2027-06-01T00:00:00.000Z' }),
     );
+  });
+
+  it('surfaces a guard-trigger error on the terminal membership update (expire mode)', async () => {
+    // If the DB guard raises on the terminal membership update (a slot raced into
+    // a committed state), the error must propagate — slots were already expired,
+    // so a swallowed error would hide a stuck-active membership.
+    const { deps, setMembership } = makeDeps();
+    setMembership.mockResolvedValue({
+      error: { message: 'cannot set membership mem-1 to expired while a slot is committed' },
+    });
+    await expect(
+      applyEndOfTerm({
+        membership: membership({ end_of_term_policy: { mode: 'expire' } }),
+        uncommittedCount: 1,
+        deps,
+      }),
+    ).rejects.toThrow(/committed|blocked/i);
+  });
+
+  it('surfaces a guard-trigger error on the terminal membership update (refund mode), after the refund', async () => {
+    const { deps, setMembership, createRefund } = makeDeps(150);
+    setMembership.mockResolvedValue({
+      error: { message: 'cannot set membership mem-1 to refunded while a slot is committed' },
+    });
+    await expect(
+      applyEndOfTerm({
+        membership: membership({ end_of_term_policy: { mode: 'refund' } }),
+        uncommittedCount: 2,
+        deps,
+      }),
+    ).rejects.toThrow(/committed|blocked/i);
+    // The refund had already been issued before the blocked terminal transition.
+    expect(createRefund).toHaveBeenCalled();
   });
 
   it('rollover mode (count 1): falls back to expire — no infinite extension', async () => {

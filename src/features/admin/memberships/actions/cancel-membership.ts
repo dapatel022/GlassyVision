@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { getCurrentUser, isAdminRole } from '@/lib/auth/middleware';
 import { calculateRefund, createRefund } from '@/lib/commerce/shopify-admin';
 import { computeProRataRefund } from '@/features/subscriptions/lib/refund-math';
+import { releaseReservedSlots } from '@/features/subscriptions/lib/release-reserved-slots';
 import type { Json } from '@/lib/supabase/types';
 
 /** Slots not yet committed to fulfillment — the only ones a cancel may expire. */
@@ -115,6 +116,10 @@ export async function cancelMembership(
       return { success: false, error: `Refund failed: ${message}` };
     }
   }
+
+  // Release inventory reserved by any pending_payment slots BEFORE expiring them,
+  // or the reserved frame unit is stranded.
+  await releaseReservedSlots(supabase, mem.id);
 
   // Expire uncommitted slots (committed ones run to completion).
   await supabase

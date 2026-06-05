@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { getCurrentUser } from '@/lib/auth/middleware';
+import { getCurrentUser, isAdminRole } from '@/lib/auth/middleware';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
@@ -18,6 +18,7 @@ interface PageProps {
 export default async function MembershipsAdminPage({ searchParams }: PageProps) {
   const user = await getCurrentUser();
   if (!user) redirect('/login?redirect=/admin/memberships');
+  if (!isAdminRole(user.role)) redirect('/unauthorized');
 
   const { status, expiring } = await searchParams;
   const supabase = createAdminClient();

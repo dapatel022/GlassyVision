@@ -7,6 +7,7 @@ import { renderMembershipWelcome } from '@/lib/email/templates/membership-welcom
 import { renderSlotUnlocked } from '@/lib/email/templates/slot-unlocked';
 import { renderExpiryWarning } from '@/lib/email/templates/expiry-warning';
 import { renderRenewalOffer } from '@/lib/email/templates/renewal-offer';
+import { releaseReservedSlots } from '@/features/subscriptions/lib/release-reserved-slots';
 import type { RenderedEmail } from '@/lib/email/templates/shared';
 import type { Json } from '@/lib/supabase/types';
 
@@ -100,6 +101,10 @@ export async function expireMembership(input: MembershipOpInput): Promise<Member
   ) {
     return { success: true }; // already terminal / not expirable
   }
+
+  // Release inventory reserved by any pending_payment slots BEFORE expiring them,
+  // or the reserved frame unit is stranded.
+  await releaseReservedSlots(supabase, mem.id);
 
   await supabase
     .from('subscription_redemptions')

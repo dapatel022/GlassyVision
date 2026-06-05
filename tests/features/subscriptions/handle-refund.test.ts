@@ -46,7 +46,12 @@ describe('handleRefundWebhook', () => {
       if (table === 'subscription_redemptions') {
         return {
           select: () => ({
-            eq: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: null }) }),
+            eq: () => ({
+              // add-on lookup: .select().eq().maybeSingle()
+              maybeSingle: () => Promise.resolve({ data: null, error: null }),
+              // releaseReservedSlots: .select().eq().eq().not()
+              eq: () => ({ not: () => Promise.resolve({ data: [], error: null }) }),
+            }),
           }),
           update: (values: Record<string, unknown>) => {
             updates.push({ table, values });
@@ -75,6 +80,74 @@ describe('handleRefundWebhook', () => {
         (u) => u.table === 'subscription_memberships' && u.values.status === 'refunded',
       ),
     ).toBe(true);
+  });
+
+  it('releases inventory reserved by a pending_payment slot when a membership is refunded', async () => {
+    // A membership refund expires pending_payment slots; the frame unit each
+    // reserved must be released (+1 subscription_release) or it is stranded.
+    const inserts: Array<{ table: string; values: Record<string, unknown> }> = [];
+    const poolUpdates: Array<Record<string, unknown>> = [];
+
+    from.mockImplementation((table: string) => {
+      const calls: Record<string, unknown[]> = {};
+      if (table === 'subscription_memberships') {
+        return {
+          select: () => ({
+            eq: () => ({ maybeSingle: () => Promise.resolve({ data: { id: 'mem-7', status: 'active' }, error: null }) }),
+          }),
+          update: () => ({ eq: () => Promise.resolve({ error: null }) }),
+        };
+      }
+      if (table === 'subscription_redemptions') {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: () => Promise.resolve({ data: null, error: null }),
+              // releaseReservedSlots: one reserved pending_payment slot.
+              eq: () => ({
+                not: () =>
+                  Promise.resolve({ data: [{ id: 'slot-7', frame_variant_id: 444 }], error: null }),
+              }),
+            }),
+          }),
+          update: () => ({ eq: () => ({ in: () => Promise.resolve({ error: null }) }) }),
+        };
+      }
+      if (table === 'inventory_pool') {
+        return {
+          select: () => ({
+            eq: () => ({ maybeSingle: () => Promise.resolve({ data: { id: 'pool-7', pool_quantity: 1 }, error: null }) }),
+          }),
+          update: (values: Record<string, unknown>) => {
+            poolUpdates.push(values);
+            return { eq: () => Promise.resolve({ error: null }) };
+          },
+        };
+      }
+      if (table === 'inventory_adjustments') {
+        return {
+          insert: (values: Record<string, unknown>) => {
+            inserts.push({ table, values });
+            return Promise.resolve({ error: null });
+          },
+        };
+      }
+      return builder({ data: null, error: null }, calls);
+    });
+
+    const { handleRefundWebhook } = await import('@/features/subscriptions/webhooks/handle-refund');
+    const res = await handleRefundWebhook({ order_id: 555 }, { from } as never);
+
+    expect(res.handled).toBe('membership');
+    expect(
+      inserts.filter(
+        (i) =>
+          i.table === 'inventory_adjustments' &&
+          i.values.delta === 1 &&
+          i.values.reason === 'subscription_release',
+      ).length,
+    ).toBe(1);
+    expect(poolUpdates).toContainEqual(expect.objectContaining({ pool_quantity: 2 }));
   });
 
   it('reverts an UNCOMMITTED add-on redemption to available and releases inventory', async () => {
@@ -257,7 +330,11 @@ describe('handleRefundWebhook', () => {
       if (table === 'subscription_redemptions') {
         return {
           select: () => ({
-            eq: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: null }) }),
+            eq: () => ({
+              maybeSingle: () => Promise.resolve({ data: null, error: null }),
+              // releaseReservedSlots: .select().eq().eq().not()
+              eq: () => ({ not: () => Promise.resolve({ data: [], error: null }) }),
+            }),
           }),
           update: () => ({ eq: () => ({ in: () => Promise.resolve({ error: null }) }) }),
         };

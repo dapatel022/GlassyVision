@@ -22,6 +22,8 @@ vi.mock('@/lib/commerce/shopify-admin', () => ({
 interface MemberOpts {
   membership?: Record<string, unknown> | null;
   redemptions?: Array<{ status: string }>;
+  /** Reserved pending_payment slots returned to releaseReservedSlots. */
+  reserved?: Array<{ id: string; frame_variant_id: number | null }>;
 }
 
 /** Wire the supabase mock; capture all updates/inserts. */
@@ -37,6 +39,7 @@ function install(o: MemberOpts = {}) {
           pairs_total: 3,
         };
   const redemptions = o.redemptions ?? [{ status: 'available' }, { status: 'available' }];
+  const reserved = o.reserved ?? [];
   const updates: Array<{ table: string; values: Record<string, unknown> }> = [];
   const inserts: Array<{ table: string; values: Record<string, unknown> }> = [];
 
@@ -55,11 +58,38 @@ function install(o: MemberOpts = {}) {
     if (table === 'subscription_redemptions') {
       return {
         select: () => ({
-          eq: () => Promise.resolve({ data: redemptions, error: null }),
+          // status-count read: .select().eq() is thenable; AND
+          // releaseReservedSlots: .select().eq().eq().not() chain.
+          eq: () => {
+            const p = Promise.resolve({ data: redemptions, error: null }) as Promise<unknown> & {
+              eq?: unknown;
+            };
+            p.eq = () => ({ not: () => Promise.resolve({ data: reserved, error: null }) });
+            return p;
+          },
         }),
         update: (values: Record<string, unknown>) => {
           updates.push({ table, values });
           return { eq: () => ({ in: () => Promise.resolve({ error: null }) }) };
+        },
+      };
+    }
+    if (table === 'inventory_pool') {
+      return {
+        select: () => ({
+          eq: () => ({ maybeSingle: () => Promise.resolve({ data: { id: 'pool-1', pool_quantity: 3 }, error: null }) }),
+        }),
+        update: (values: Record<string, unknown>) => {
+          updates.push({ table, values });
+          return { eq: () => Promise.resolve({ error: null }) };
+        },
+      };
+    }
+    if (table === 'inventory_adjustments') {
+      return {
+        insert: (values: Record<string, unknown>) => {
+          inserts.push({ table, values });
+          return Promise.resolve({ error: null });
         },
       };
     }
@@ -126,6 +156,36 @@ describe('cancelMembership', () => {
       ),
     ).toBe(true);
     expect(inserts.some((i) => i.table === 'audit_log')).toBe(true);
+  });
+
+  it('releases inventory reserved by a pending_payment slot before expiring it', async () => {
+    const { inserts, updates } = install({
+      redemptions: [{ status: 'pending_payment' }, { status: 'available' }],
+      reserved: [{ id: 'slot-1', frame_variant_id: 222 }],
+    });
+    const { cancelMembership } = await import('@/features/admin/memberships/actions/cancel-membership');
+    const res = await cancelMembership({ membershipId: 'mem-1', reason: 'with reservation' });
+
+    expect(res.success).toBe(true);
+    expect(
+      inserts.filter(
+        (i) =>
+          i.table === 'inventory_adjustments' &&
+          i.values.delta === 1 &&
+          i.values.reason === 'subscription_release',
+      ).length,
+    ).toBe(1);
+    expect(
+      updates.some((u) => u.table === 'inventory_pool' && u.values.pool_quantity === 4),
+    ).toBe(true);
+  });
+
+  it('releases nothing when no pending_payment slot is reserved', async () => {
+    const { inserts } = install({ reserved: [] });
+    const { cancelMembership } = await import('@/features/admin/memberships/actions/cancel-membership');
+    const res = await cancelMembership({ membershipId: 'mem-1', reason: 'no reservation' });
+    expect(res.success).toBe(true);
+    expect(inserts.some((i) => i.table === 'inventory_adjustments')).toBe(false);
   });
 
   it('is idempotent: a no-op when the membership is not active/grace/disputed', async () => {
@@ -198,7 +258,15 @@ describe('cancelMembership', () => {
       }
       if (table === 'subscription_redemptions') {
         return {
-          select: () => ({ eq: () => Promise.resolve({ data: [{ status: 'available' }], error: null }) }),
+          select: () => ({
+            eq: () => {
+              const p = Promise.resolve({ data: [{ status: 'available' }], error: null }) as Promise<unknown> & {
+                eq?: unknown;
+              };
+              p.eq = () => ({ not: () => Promise.resolve({ data: [], error: null }) });
+              return p;
+            },
+          }),
           update: () => ({ eq: () => ({ in: () => Promise.resolve({ error: null }) }) }),
         };
       }

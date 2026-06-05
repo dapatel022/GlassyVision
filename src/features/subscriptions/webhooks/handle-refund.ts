@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { releaseReservedSlots } from '@/features/subscriptions/lib/release-reserved-slots';
 
 /** The slice of a Shopify `refunds/create` payload we rely on. */
 export interface RefundWebhookPayload {
@@ -58,6 +59,10 @@ export async function handleRefundWebhook(
     if (['refunded', 'cancelled', 'expired'].includes(mem.status)) {
       return { handled: 'membership', expiredSlots: 0 };
     }
+
+    // Release inventory reserved by any pending_payment slots BEFORE expiring
+    // them, or the reserved frame unit is stranded.
+    await releaseReservedSlots(supabase, mem.id);
 
     // Expire every uncommitted slot. Committed slots (awaiting_rx+) run to
     // completion and are deliberately excluded.

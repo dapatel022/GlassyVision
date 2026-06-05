@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { getCurrentUser } from '@/lib/auth/middleware';
+import { getCurrentUser, isAdminRole } from '@/lib/auth/middleware';
 import PlanForm from '@/features/admin/plans/components/PlanForm';
 
 export const dynamic = 'force-dynamic';
@@ -8,6 +8,7 @@ export const dynamic = 'force-dynamic';
 export default async function NewPlanPage() {
   const user = await getCurrentUser();
   if (!user) redirect('/login?redirect=/admin/plans/new');
+  if (!isAdminRole(user.role)) redirect('/unauthorized');
 
   return (
     <div className="max-w-2xl space-y-6">

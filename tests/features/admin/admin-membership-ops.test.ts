@@ -29,6 +29,8 @@ const UNCOMMITTED = ['available', 'locked', 'pending_payment'];
 interface InstallOpts {
   membership?: Record<string, unknown> | null;
   customer?: Record<string, unknown> | null;
+  /** Reserved pending_payment slots returned to releaseReservedSlots. */
+  reserved?: Array<{ id: string; frame_variant_id: number | null }>;
 }
 
 function install(o: InstallOpts = {}) {
@@ -43,6 +45,7 @@ function install(o: InstallOpts = {}) {
           pairs_total: 3,
           customer_id: 'cust-1',
         };
+  const reserved = o.reserved ?? [];
   const updates: Array<{ table: string; values: Record<string, unknown> }> = [];
   const inserts: Array<{ table: string; values: Record<string, unknown> }> = [];
   const slotUpdates: Array<{ values: Record<string, unknown>; inFilter?: string[] }> = [];
@@ -61,6 +64,10 @@ function install(o: InstallOpts = {}) {
     }
     if (table === 'subscription_redemptions') {
       return {
+        // releaseReservedSlots: .select().eq().eq().not()
+        select: () => ({
+          eq: () => ({ eq: () => ({ not: () => Promise.resolve({ data: reserved, error: null }) }) }),
+        }),
         update: (values: Record<string, unknown>) => {
           const entry: { values: Record<string, unknown>; inFilter?: string[] } = { values };
           slotUpdates.push(entry);
@@ -72,6 +79,25 @@ function install(o: InstallOpts = {}) {
               },
             }),
           };
+        },
+      };
+    }
+    if (table === 'inventory_pool') {
+      return {
+        select: () => ({
+          eq: () => ({ maybeSingle: () => Promise.resolve({ data: { id: 'pool-1', pool_quantity: 3 }, error: null }) }),
+        }),
+        update: (values: Record<string, unknown>) => {
+          updates.push({ table, values });
+          return { eq: () => Promise.resolve({ error: null }) };
+        },
+      };
+    }
+    if (table === 'inventory_adjustments') {
+      return {
+        insert: (values: Record<string, unknown>) => {
+          inserts.push({ table, values });
+          return Promise.resolve({ error: null });
         },
       };
     }
@@ -142,6 +168,30 @@ describe('expireMembership', () => {
 
     const audit = inserts.find((i) => i.table === 'audit_log');
     expect(audit!.values.action).toBe('membership_expired_manual');
+  });
+
+  it('releases inventory reserved by a pending_payment slot before expiring it', async () => {
+    const { inserts, updates } = install({ reserved: [{ id: 'slot-1', frame_variant_id: 222 }] });
+    const res = await expireMembership({ membershipId: 'mem-1' });
+    expect(res.success).toBe(true);
+    expect(
+      inserts.filter(
+        (i) =>
+          i.table === 'inventory_adjustments' &&
+          i.values.delta === 1 &&
+          i.values.reason === 'subscription_release',
+      ).length,
+    ).toBe(1);
+    expect(
+      updates.some((u) => u.table === 'inventory_pool' && u.values.pool_quantity === 4),
+    ).toBe(true);
+  });
+
+  it('releases nothing when no pending_payment slot is reserved', async () => {
+    const { inserts } = install({ reserved: [] });
+    const res = await expireMembership({ membershipId: 'mem-1' });
+    expect(res.success).toBe(true);
+    expect(inserts.some((i) => i.table === 'inventory_adjustments')).toBe(false);
   });
 
   it('is a no-op when membership is already in a terminal state', async () => {

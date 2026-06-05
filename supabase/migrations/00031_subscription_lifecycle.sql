@@ -52,6 +52,12 @@ create policy "addr_delete_own" on customer_saved_addresses for delete
   using (customer_id = public.current_customer_id());
 
 -- 5. Guard: a membership may not reach a terminal money state while any slot is committed.
+-- `pending_payment` is deliberately NOT in the committed/blocking set: it is a
+-- pre-fulfillment, money-not-yet-captured state and every app caller treats it as
+-- uncommitted (expires it, releasing its inventory reservation). Committed =
+-- {awaiting_rx, in_review, in_production, shipped} — the same set the cron's
+-- COMMITTED_STATUSES uses; nothing past `shipped` (delivered/cancelled/expired/
+-- rx_rejected) blocks a terminal membership transition.
 create or replace function guard_membership_terminal()
 returns trigger language plpgsql as $$
 begin
@@ -59,7 +65,7 @@ begin
     if exists (
       select 1 from subscription_redemptions r
       where r.membership_id = new.id
-        and r.status in ('pending_payment','awaiting_rx','in_review','in_production','shipped')
+        and r.status in ('awaiting_rx','in_review','in_production','shipped')
     ) then
       raise exception 'cannot set membership % to % while a slot is committed', new.id, new.status;
     end if;

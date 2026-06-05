@@ -8,6 +8,7 @@ import type {
   EndOfTermMembership,
   EndOfTermPolicy,
 } from '@/features/subscriptions/lib/end-of-term';
+import { releaseReservedSlots } from '@/features/subscriptions/lib/release-reserved-slots';
 import { renderExpiryWarning } from '@/lib/email/templates/expiry-warning';
 import { renderRenewalOffer } from '@/lib/email/templates/renewal-offer';
 import type { Database, Json } from '@/lib/supabase/types';
@@ -184,28 +185,42 @@ export async function GET(request: Request): Promise<Response> {
           rollover_count: m.rollover_count,
           end_of_term_policy: policy,
         };
-        const result = await applyEndOfTerm({
-          membership: eotMembership,
-          uncommittedCount,
-          deps: {
-            now: () => new Date(now),
-            capturedAmount,
-            expireUncommittedSlots: async (membershipId) => {
-              await supabase
-                .from('subscription_redemptions')
-                .update({ status: 'expired' })
-                .eq('membership_id', membershipId)
-                .in('status', [...UNCOMMITTED_STATUSES]);
+        let result;
+        try {
+          result = await applyEndOfTerm({
+            membership: eotMembership,
+            uncommittedCount,
+            deps: {
+              now: () => new Date(now),
+              capturedAmount,
+              expireUncommittedSlots: async (membershipId) => {
+                // Release inventory reserved by pending_payment slots BEFORE
+                // expiring them, or the reserved frame unit is stranded.
+                await releaseReservedSlots(supabase, membershipId);
+                await supabase
+                  .from('subscription_redemptions')
+                  .update({ status: 'expired' })
+                  .eq('membership_id', membershipId)
+                  .in('status', [...UNCOMMITTED_STATUSES]);
+              },
+              setMembership: async (membershipId, patch) => {
+                const { error } = await supabase
+                  .from('subscription_memberships')
+                  .update(patch as Database['public']['Tables']['subscription_memberships']['Update'])
+                  .eq('id', membershipId);
+                return { error };
+              },
+              createRefund,
             },
-            setMembership: async (membershipId, patch) => {
-              await supabase
-                .from('subscription_memberships')
-                .update(patch as Database['public']['Tables']['subscription_memberships']['Update'])
-                .eq('id', membershipId);
-            },
-            createRefund,
-          },
-        });
+          });
+        } catch (err) {
+          // applyEndOfTerm surfaces a guard-trigger raise on the terminal
+          // membership update (a slot raced into a committed state). Record it as
+          // an error — do NOT count this as a successful end-of-term.
+          const message = err instanceof Error ? err.message : 'unknown';
+          errors.push({ membershipId: m.id, error: `end-of-term: ${message}` });
+          continue;
+        }
         ended++;
 
         // Renewal offer on a terminal (non-rollover) end-of-term.
