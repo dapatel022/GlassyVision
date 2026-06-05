@@ -92,7 +92,12 @@ export async function expireMembership(input: MembershipOpInput): Promise<Member
   if ('error' in loaded) return loaded.error;
   const { user, supabase, mem } = loaded;
 
-  if (mem.status !== 'active' && mem.status !== 'grace' && mem.status !== 'frozen') {
+  if (
+    mem.status !== 'active' &&
+    mem.status !== 'grace' &&
+    mem.status !== 'frozen' &&
+    mem.status !== 'disputed'
+  ) {
     return { success: true }; // already terminal / not expirable
   }
 
@@ -152,6 +157,33 @@ export async function unfreezeMembership(input: MembershipOpInput): Promise<Memb
   if (updErr) return { success: false, error: updErr.message };
 
   await writeAudit(supabase, user.id, 'membership_unfrozen', mem.id, mem.status, { status: 'active' });
+  return { success: true };
+}
+
+/**
+ * Resolve a dispute in the merchant's favour (chargeback won) by returning a
+ * `disputed` membership to `active` so its prepaid slots become redeemable
+ * again. Without this, `disputed` is a dead-end: no action can move a membership
+ * out of it and the customer's paid-for slots are stranded forever. A LOST
+ * chargeback is instead settled via `cancelMembership`/`expireMembership`
+ * (both now accept `disputed`).
+ */
+export async function resolveDispute(input: MembershipOpInput): Promise<MembershipOpResult> {
+  const loaded = await loadAdminAndMembership(input.membershipId);
+  if ('error' in loaded) return loaded.error;
+  const { user, supabase, mem } = loaded;
+
+  if (mem.status !== 'disputed') {
+    return { success: false, error: `Only a disputed membership can be resolved (current: ${mem.status})` };
+  }
+
+  const { error: updErr } = await supabase
+    .from('subscription_memberships')
+    .update({ status: 'active' })
+    .eq('id', mem.id);
+  if (updErr) return { success: false, error: updErr.message };
+
+  await writeAudit(supabase, user.id, 'membership_dispute_resolved', mem.id, mem.status, { status: 'active' });
   return { success: true };
 }
 

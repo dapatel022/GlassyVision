@@ -29,8 +29,10 @@ const UNCOMMITTED_STATUSES = ['available', 'locked', 'pending_payment'] as const
  *  - membership purchase order → membership `refunded`, uncommitted slots
  *    (`available`/`locked`/`pending_payment`) → `expired`. Committed slots
  *    (`awaiting_rx`+) are left running. Already-terminal memberships are a no-op.
- *  - add-on (surcharge) order → revert that one redemption to `available` and
- *    release its inventory reservation (mirrors the sweep-abandoned revert).
+ *  - add-on (surcharge) order → only when the redemption is still uncommitted,
+ *    revert it to `available` and release its inventory reservation (mirrors the
+ *    sweep-abandoned revert). A surcharge refunded after the slot committed
+ *    (awaiting_rx+) is left intact and flagged in `audit_log` for manual review.
  *
  * Idempotent and a safe no-op for non-subscription orders.
  */
@@ -66,12 +68,21 @@ export async function handleRefundWebhook(
       .in('status', UNCOMMITTED_STATUSES as unknown as string[]);
 
     // Mark the membership refunded. The DB guard trigger blocks this if any slot
-    // is still committed; if it raises, the membership stays as-is for admin
-    // handling (the surrounding webhook try/catch records the error).
-    await supabase
+    // is still committed; PostgREST returns that as {error} (it does NOT throw),
+    // so we MUST capture and surface it. Throwing makes the webhook return 5xx,
+    // leaves processed_at null as a dead-letter, and Shopify retries. Swallowing
+    // it would leave the customer fully refunded yet the membership `active`
+    // (remaining slots stay redeemable = free glasses) with zero visibility.
+    const { error: refundUpdErr } = await supabase
       .from('subscription_memberships')
       .update({ status: 'refunded' })
       .eq('id', mem.id);
+
+    if (refundUpdErr) {
+      throw new Error(
+        `Failed to mark membership ${mem.id} refunded (likely a committed slot guard): ${refundUpdErr.message}`,
+      );
+    }
 
     return { handled: 'membership' };
   }
@@ -90,8 +101,34 @@ export async function handleRefundWebhook(
       status: string;
     };
 
+    // A surcharge refund may only free the slot while it is still UNCOMMITTED.
+    // `add_on_shopify_order_id` is set at addon-payment time and never cleared as
+    // the redemption advances (awaiting_rx → in_production → shipped → delivered),
+    // so without this guard a refund issued AFTER the pair was made/shipped would
+    // flip an already-fulfilled redemption back to `available` (free re-redemption)
+    // and re-credit a unit of inventory that already left the building. For a
+    // committed/terminal slot we leave the slot + fulfillment intact and surface
+    // it for manual admin handling instead (overview §86 — a refund never claws
+    // back a pair that is already being made/shipped).
+    if (!(UNCOMMITTED_STATUSES as readonly string[]).includes(slot.status)) {
+      await supabase.from('audit_log').insert({
+        user_id: null,
+        action: 'addon_refund_on_committed_slot',
+        entity_type: 'subscription_redemption',
+        entity_id: slot.id,
+        before_data: { status: slot.status } as never,
+        after_data: {
+          add_on_shopify_order_id: orderId,
+          note: 'Add-on surcharge refunded after the slot was committed; slot left intact — manual admin review required.',
+        } as never,
+      });
+      return { handled: 'addon' };
+    }
+
     // Reset the slot to available, clearing the add-on selection — mirrors the
     // sweep-abandoned revert so a refunded surcharge frees the slot for reuse.
+    // Re-check the uncommitted status in the WHERE clause to close the race
+    // between the read above and this write.
     await supabase
       .from('subscription_redemptions')
       .update({
@@ -104,7 +141,8 @@ export async function handleRefundWebhook(
         pending_payment_expires_at: null,
         add_on_shopify_order_id: null,
       })
-      .eq('id', slot.id);
+      .eq('id', slot.id)
+      .in('status', UNCOMMITTED_STATUSES as unknown as string[]);
 
     // Release the reserved unit of stock, if a frame was selected.
     if (slot.frame_variant_id != null) {

@@ -128,7 +128,7 @@ describe('cancelMembership', () => {
     expect(inserts.some((i) => i.table === 'audit_log')).toBe(true);
   });
 
-  it('is idempotent: a no-op when the membership is not active/grace', async () => {
+  it('is idempotent: a no-op when the membership is not active/grace/disputed', async () => {
     const { updates } = install({
       membership: { id: 'mem-1', status: 'refunded', shopify_order_id: 555, currency: 'USD', pairs_total: 3 },
     });
@@ -137,6 +137,20 @@ describe('cancelMembership', () => {
     expect(res.success).toBe(true);
     expect(createRefund).not.toHaveBeenCalled();
     expect(updates.length).toBe(0);
+  });
+
+  it('can cancel a disputed membership (lost chargeback escalated to refund)', async () => {
+    const { updates } = install({
+      membership: { id: 'mem-1', status: 'disputed', shopify_order_id: 555, currency: 'USD', pairs_total: 3 },
+    });
+    const { cancelMembership } = await import('@/features/admin/memberships/actions/cancel-membership');
+    const res = await cancelMembership({ membershipId: 'mem-1', reason: 'dispute lost' });
+    expect(res.success).toBe(true);
+    expect(
+      updates.some(
+        (u) => u.table === 'subscription_memberships' && u.values.status === 'cancelled',
+      ),
+    ).toBe(true);
   });
 
   it('skips the refund call when nothing is refundable (all slots committed)', async () => {

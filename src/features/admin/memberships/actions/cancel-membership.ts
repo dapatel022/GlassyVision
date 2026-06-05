@@ -65,8 +65,11 @@ export async function cancelMembership(
     pairs_total: number;
   };
 
-  // Idempotency: only an active or in-grace membership can be cancelled.
-  if (mem.status !== 'active' && mem.status !== 'grace') {
+  // Idempotency: only an active, in-grace, or disputed membership can be
+  // cancelled. `disputed` is included so a lost chargeback (or a dispute the
+  // admin chooses to settle with a refund) has an exit from the otherwise
+  // dead-end disputed state.
+  if (mem.status !== 'active' && mem.status !== 'grace' && mem.status !== 'disputed') {
     return { success: true, refundAmount: 0 };
   }
 

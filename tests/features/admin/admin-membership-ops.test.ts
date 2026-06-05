@@ -21,6 +21,7 @@ import {
   freezeMembership,
   unfreezeMembership,
   resendMembershipEmail,
+  resolveDispute,
 } from '@/features/admin/memberships/actions/admin-membership-ops';
 
 const UNCOMMITTED = ['available', 'locked', 'pending_payment'];
@@ -182,6 +183,43 @@ describe('freeze / unfreeze', () => {
   it('unfreeze refuses to act on a non-frozen membership', async () => {
     const { updates } = install();
     const res = await unfreezeMembership({ membershipId: 'mem-1' });
+    expect(res.success).toBe(false);
+    expect(updates.find((u) => u.values.status === 'active')).toBeUndefined();
+  });
+});
+
+describe('expireMembership — disputed exit', () => {
+  it('can expire a disputed membership (lost chargeback, no auto-refund)', async () => {
+    const { updates } = install({
+      membership: { id: 'mem-1', status: 'disputed', shopify_order_id: 1, currency: 'USD', pairs_total: 3, customer_id: 'c' },
+    });
+    const res = await expireMembership({ membershipId: 'mem-1' });
+    expect(res.success).toBe(true);
+    expect(updates.find((u) => u.values.status === 'expired')).toBeDefined();
+  });
+});
+
+describe('resolveDispute', () => {
+  it('rejects a non-admin', async () => {
+    getCurrentUser.mockResolvedValue(null);
+    install({ membership: { id: 'mem-1', status: 'disputed', shopify_order_id: 1, currency: 'USD', pairs_total: 3, customer_id: 'c' } });
+    const res = await resolveDispute({ membershipId: 'mem-1' });
+    expect(res.success).toBe(false);
+  });
+
+  it('returns a disputed membership to active (merchant won) and audit-logs', async () => {
+    const { updates, inserts } = install({
+      membership: { id: 'mem-1', status: 'disputed', shopify_order_id: 1, currency: 'USD', pairs_total: 3, customer_id: 'c' },
+    });
+    const res = await resolveDispute({ membershipId: 'mem-1' });
+    expect(res.success).toBe(true);
+    expect(updates.find((u) => u.values.status === 'active')).toBeDefined();
+    expect(inserts.find((i) => i.table === 'audit_log')!.values.action).toBe('membership_dispute_resolved');
+  });
+
+  it('refuses to act on a non-disputed membership', async () => {
+    const { updates } = install();
+    const res = await resolveDispute({ membershipId: 'mem-1' });
     expect(res.success).toBe(false);
     expect(updates.find((u) => u.values.status === 'active')).toBeUndefined();
   });

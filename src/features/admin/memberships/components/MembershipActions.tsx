@@ -7,6 +7,7 @@ import {
   expireMembership,
   freezeMembership,
   unfreezeMembership,
+  resolveDispute,
   resendMembershipEmail,
   type ResendableEmailType,
 } from '../actions/admin-membership-ops';
@@ -33,6 +34,7 @@ export default function MembershipActions({ membershipId, status }: Props) {
 
   const isActiveLike = status === 'active' || status === 'grace';
   const isFrozen = status === 'frozen';
+  const isDisputed = status === 'disputed';
 
   async function run(fn: () => Promise<{ success: boolean; error?: string }>, ok: string) {
     setBusy(true);
@@ -54,7 +56,23 @@ export default function MembershipActions({ membershipId, status }: Props) {
     <div className="space-y-4 p-6 border border-line rounded-xl bg-white">
       <h2 className="font-sans text-sm font-black uppercase tracking-wider text-ink">Admin actions</h2>
 
-      {(isActiveLike || isFrozen) && (
+      {isDisputed && (
+        <div className="space-y-2 p-3 border border-amber-300 rounded-lg bg-amber-50">
+          <p className="text-xs font-sans text-amber-800">
+            This membership is under a chargeback dispute. Slots are frozen. Resolve in
+            the merchant&apos;s favour to reactivate, or cancel/expire to settle a lost dispute.
+          </p>
+          <button
+            disabled={busy}
+            onClick={() => run(() => resolveDispute({ membershipId }), 'Dispute resolved — membership reactivated.')}
+            className={`${btn} bg-accent text-white`}
+          >
+            Resolve dispute (won)
+          </button>
+        </div>
+      )}
+
+      {(isActiveLike || isFrozen || isDisputed) && (
         <div className="space-y-2">
           <label className="block text-xs font-sans font-bold uppercase tracking-wider text-muted-soft">
             Cancel reason
@@ -77,7 +95,7 @@ export default function MembershipActions({ membershipId, status }: Props) {
       )}
 
       <div className="flex flex-wrap gap-2">
-        {isActiveLike && (
+        {(isActiveLike || isDisputed) && (
           <button disabled={busy} onClick={() => run(() => expireMembership({ membershipId }), 'Membership expired.')} className={`${btn} bg-ink text-white`}>
             Manual expire
           </button>
