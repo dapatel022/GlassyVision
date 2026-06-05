@@ -6,9 +6,11 @@ vi.mock('@/lib/email/resend', () => ({ sendEmail: (...a: unknown[]) => sendEmail
 
 const calculateRefund = vi.fn();
 const createRefund = vi.fn();
+const getCapturedAmount = vi.fn();
 vi.mock('@/lib/commerce/shopify-admin', () => ({
   calculateRefund: (...a: unknown[]) => calculateRefund(...a),
   createRefund: (...a: unknown[]) => createRefund(...a),
+  getCapturedAmount: (...a: unknown[]) => getCapturedAmount(...a),
 }));
 
 const createAdminClient = vi.fn();
@@ -27,6 +29,8 @@ beforeEach(() => {
   calculateRefund.mockResolvedValue({
     refund: { shipping: { amount: '0.00' }, transactions: [{ kind: 'suggested_refund', amount: '150.00' }] },
   });
+  // Pro-rata BASE is the ORIGINAL captured amount, not the remaining refundable.
+  getCapturedAmount.mockResolvedValue(150);
   createRefund.mockResolvedValue({ refund: { id: 1 } });
 });
 
@@ -252,6 +256,41 @@ describe('membership-expiry cron', () => {
         (u) => u.table === 'subscription_memberships' && u.values.status === 'refunded',
       ),
     ).toBe(true);
+  });
+
+  it('pro-rates end-of-term on the ORIGINAL captured base after a prior partial refund (not remaining)', async () => {
+    // Order captured 150; a prior partial refund leaves 120 remaining-refundable.
+    // 2-of-3 unredeemed must pro-rate on 150 → 100.00, NOT on 120 → 80.00.
+    getCapturedAmount.mockResolvedValueOnce(150);
+    calculateRefund.mockResolvedValueOnce({
+      refund: { shipping: { amount: '0.00' }, transactions: [{ kind: 'suggested_refund', amount: '120.00' }] },
+    });
+    const termEnd = new Date(NOW.getTime() - 20 * 86400_000).toISOString();
+    const graceStart = new Date(NOW.getTime() - 20 * 86400_000).toISOString();
+    mockSupabase({
+      memberships: [
+        {
+          id: 'mem-1',
+          status: 'grace',
+          customer_id: 'cust-1',
+          shopify_order_id: 555,
+          currency: 'USD',
+          pairs_total: 3,
+          term_start: '2025-06-15T00:00:00.000Z',
+          term_end: termEnd,
+          term_months: 12,
+          rollover_count: 0,
+          grace_start: graceStart,
+          end_of_term_policy: { mode: 'refund', reminder_days: [], grace_days: 14 },
+        },
+      ],
+      redemptions: { 'mem-1': [{ status: 'available' }, { status: 'available' }] }, // 2 uncommitted
+    });
+
+    await GET(req('test-secret'));
+    // Base from getCapturedAmount (150), not remaining 120 → refund 100, not 80.
+    expect(getCapturedAmount).toHaveBeenCalledWith(555, 'USD');
+    expect(createRefund).toHaveBeenCalledWith(555, 100, 'USD', expect.any(String));
   });
 
   it('reports an error (not success) when the terminal membership update is rejected by the guard', async () => {

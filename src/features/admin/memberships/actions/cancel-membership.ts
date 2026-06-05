@@ -2,7 +2,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getCurrentUser, isAdminRole } from '@/lib/auth/middleware';
-import { calculateRefund, createRefund } from '@/lib/commerce/shopify-admin';
+import { getCapturedAmount, createRefund } from '@/lib/commerce/shopify-admin';
 import { computeProRataRefund } from '@/features/subscriptions/lib/refund-math';
 import { releaseReservedSlots } from '@/features/subscriptions/lib/release-reserved-slots';
 import type { Json } from '@/lib/supabase/types';
@@ -83,22 +83,21 @@ export async function cancelMembership(
     (UNCOMMITTED_STATUSES as readonly string[]).includes(r.status),
   ).length;
 
-  // Pull the actual refundable amount from Shopify (captured minus already
-  // refunded) — never derive money from a mirrored price.
-  let capturedAmount = 0;
+  // Pro-rata BASE is the order's ORIGINAL captured amount (sum of success
+  // capture/sale transactions) — NOT the remaining refundable. Using remaining
+  // would understate the per-pair share once a prior partial refund exists.
+  // `createRefund` still caps the issued amount at the remaining refundable, so
+  // over-refunding is impossible. Never derive money from a mirrored price.
+  let originalCapturedAmount = 0;
   try {
-    const calc = await calculateRefund(mem.shopify_order_id, 0, mem.currency);
-    const suggested =
-      calc.refund.transactions.find((t) => t.kind === 'suggested_refund') ??
-      calc.refund.transactions[0];
-    capturedAmount = suggested ? parseFloat(suggested.amount) : 0;
+    originalCapturedAmount = await getCapturedAmount(mem.shopify_order_id, mem.currency);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'unknown';
-    return { success: false, error: `Could not read refundable amount from Shopify: ${message}` };
+    return { success: false, error: `Could not read captured amount from Shopify: ${message}` };
   }
 
   const refundAmount = computeProRataRefund({
-    capturedAmount,
+    capturedAmount: originalCapturedAmount,
     pairsTotal: mem.pairs_total,
     uncommittedCount,
   });

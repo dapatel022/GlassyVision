@@ -87,6 +87,41 @@ export async function calculateRefund(orderId: number, amount: number, currency:
   }>;
 }
 
+/**
+ * The order's ORIGINAL captured amount — the sum of all `success` `capture`/`sale`
+ * transactions (money actually captured), BEFORE subtracting any prior refunds.
+ *
+ * This is the correct pro-rata BASE for per-pair refunds: `refunds/calculate.json`'s
+ * `suggested_refund.amount` is the REMAINING refundable (captured minus already-
+ * refunded), which understates what unredeemed pairs are owed once a partial refund
+ * has been issued. The remaining-refundable still acts as the CAP inside
+ * `createRefund`, so over-refunding is impossible.
+ *
+ * Falls back to the order's `total_price` when no capture/sale transactions are
+ * present (e.g. a gateway that reports captures differently). Rounds to 2 decimals.
+ */
+export async function getCapturedAmount(orderId: number, currency: string): Promise<number> {
+  void currency; // captured amount is in the order's own currency
+  const { transactions } = await adminFetch<{
+    transactions?: Array<{ kind: string; status: string; amount: string }>;
+  }>(`orders/${orderId}/transactions.json`);
+
+  const captured = (transactions ?? [])
+    .filter((t) => t.status === 'success' && (t.kind === 'capture' || t.kind === 'sale'))
+    .reduce((sum, t) => sum + parseFloat(t.amount), 0);
+
+  if (captured > 0) {
+    return Math.round(captured * 100) / 100;
+  }
+
+  // Fallback: no capture/sale transactions found — use the order total.
+  const { order } = await adminFetch<{ order?: { total_price?: string } }>(
+    `orders/${orderId}.json?fields=total_price`,
+  );
+  const total = order?.total_price ? parseFloat(order.total_price) : 0;
+  return Math.round(total * 100) / 100;
+}
+
 export async function createRefund(
   orderId: number,
   amount: number,

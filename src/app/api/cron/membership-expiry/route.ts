@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { timingSafeEqual } from 'crypto';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { sendEmail } from '@/lib/email/resend';
-import { calculateRefund, createRefund } from '@/lib/commerce/shopify-admin';
+import { getCapturedAmount, createRefund } from '@/lib/commerce/shopify-admin';
 import { applyEndOfTerm } from '@/features/subscriptions/lib/end-of-term';
 import type {
   EndOfTermMembership,
@@ -92,16 +92,14 @@ function selectReminderDay(
 }
 
 /**
- * Fetch the actual refundable (captured-minus-already-refunded) amount from
- * Shopify so we never derive money from a mirrored price.
+ * Fetch the order's ORIGINAL captured amount (sum of success capture/sale
+ * transactions) from Shopify so the pro-rata BASE is not understated by a prior
+ * partial refund. The remaining refundable still caps the issued amount inside
+ * `createRefund`. Never derive money from a mirrored price.
  */
 async function fetchCapturedAmount(shopifyOrderId: number, currency: string): Promise<number> {
   try {
-    const calc = await calculateRefund(shopifyOrderId, 0, currency);
-    const suggested =
-      calc.refund.transactions.find((t) => t.kind === 'suggested_refund') ??
-      calc.refund.transactions[0];
-    return suggested ? parseFloat(suggested.amount) : 0;
+    return await getCapturedAmount(shopifyOrderId, currency);
   } catch {
     return 0;
   }

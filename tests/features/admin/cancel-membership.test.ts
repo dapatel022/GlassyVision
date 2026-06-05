@@ -14,9 +14,11 @@ vi.mock('@/lib/auth/middleware', () => ({
 
 const calculateRefund = vi.fn();
 const createRefund = vi.fn();
+const getCapturedAmount = vi.fn();
 vi.mock('@/lib/commerce/shopify-admin', () => ({
   calculateRefund: (...a: unknown[]) => calculateRefund(...a),
   createRefund: (...a: unknown[]) => createRefund(...a),
+  getCapturedAmount: (...a: unknown[]) => getCapturedAmount(...a),
 }));
 
 interface MemberOpts {
@@ -113,6 +115,8 @@ beforeEach(() => {
   calculateRefund.mockResolvedValue({
     refund: { shipping: { amount: '0.00' }, transactions: [{ kind: 'suggested_refund', amount: '150.00' }] },
   });
+  // Pro-rata BASE is the ORIGINAL captured amount, not the remaining refundable.
+  getCapturedAmount.mockResolvedValue(150);
   createRefund.mockResolvedValue({ refund: { id: 1 } });
 });
 
@@ -156,6 +160,25 @@ describe('cancelMembership', () => {
       ),
     ).toBe(true);
     expect(inserts.some((i) => i.table === 'audit_log')).toBe(true);
+  });
+
+  it('pro-rates on the ORIGINAL captured base after a prior partial refund (not the remaining refundable)', async () => {
+    // Order captured 150, a prior partial refund leaves 120 remaining-refundable.
+    // 2-of-3 unredeemed must pro-rate on 150 → 100.00, NOT on 120 → 80.00.
+    getCapturedAmount.mockResolvedValueOnce(150);
+    calculateRefund.mockResolvedValueOnce({
+      refund: { shipping: { amount: '0.00' }, transactions: [{ kind: 'suggested_refund', amount: '120.00' }] },
+    });
+    install({ redemptions: [{ status: 'available' }, { status: 'available' }] });
+    const { cancelMembership } = await import('@/features/admin/memberships/actions/cancel-membership');
+    const res = await cancelMembership({ membershipId: 'mem-1', reason: 'partial-refund history' });
+
+    expect(res.success).toBe(true);
+    expect(res.refundAmount).toBe(100);
+    // Base came from getCapturedAmount (150), not the remaining 120.
+    expect(getCapturedAmount).toHaveBeenCalledWith(555, 'USD');
+    // createRefund still called (its own remaining-refundable cap is exercised separately).
+    expect(createRefund).toHaveBeenCalledWith(555, 100, 'USD', expect.any(String));
   });
 
   it('releases inventory reserved by a pending_payment slot before expiring it', async () => {
