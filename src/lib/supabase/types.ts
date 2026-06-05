@@ -1168,6 +1168,11 @@ export type Database = {
           redemption_policy: Json;
           end_of_term_policy: Json;
           next_renewal_at: string | null;
+          grace_start: string | null;
+          renewal_offer_sent_at: string | null;
+          rollover_count: number;
+          cancelled_at: string | null;
+          cancel_reason: string | null;
           created_at: string;
         };
         Insert: {
@@ -1183,6 +1188,11 @@ export type Database = {
           redemption_policy: Json;
           end_of_term_policy: Json;
           next_renewal_at?: string | null;
+          grace_start?: string | null;
+          renewal_offer_sent_at?: string | null;
+          rollover_count?: number;
+          cancelled_at?: string | null;
+          cancel_reason?: string | null;
           created_at?: string;
         };
         Update: {
@@ -1198,6 +1208,11 @@ export type Database = {
           redemption_policy?: Json;
           end_of_term_policy?: Json;
           next_renewal_at?: string | null;
+          grace_start?: string | null;
+          renewal_offer_sent_at?: string | null;
+          rollover_count?: number;
+          cancelled_at?: string | null;
+          cancel_reason?: string | null;
           created_at?: string;
         };
         Relationships: [
@@ -1311,6 +1326,38 @@ export type Database = {
         };
         Relationships: [];
       };
+      customer_saved_addresses: {
+        Row: {
+          id: string;
+          customer_id: string;
+          label: string | null;
+          recipient_name: string;
+          address: Json;
+          is_default: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          customer_id: string;
+          label?: string | null;
+          recipient_name: string;
+          address: Json;
+          is_default?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          customer_id?: string;
+          label?: string | null;
+          recipient_name?: string;
+          address?: Json;
+          is_default?: boolean;
+          created_at?: string;
+        };
+        Relationships: [
+          { foreignKeyName: 'customer_saved_addresses_customer_id_fkey'; columns: ['customer_id']; referencedRelation: 'customers'; referencedColumns: ['id'] },
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -1341,7 +1388,7 @@ export type Database = {
       kanban_column: 'inbox' | 'ready_to_cut' | 'on_edger' | 'on_bench' | 'qc' | 'ship';
       adjustment_reason: 'initial_stock' | 'restock' | 'order_fulfilled' | 'walk_in_depletion' | 'manual_correction' | 'damaged' | 'return_restock' | 'subscription_reserved' | 'subscription_release';
       order_source: 'shopify' | 'subscription';
-      membership_status: 'active' | 'grace' | 'expired' | 'cancelled' | 'refunded' | 'frozen';
+      membership_status: 'active' | 'grace' | 'expired' | 'cancelled' | 'refunded' | 'frozen' | 'disputed';
       redemption_status: 'available' | 'locked' | 'pending_payment' | 'awaiting_rx' | 'in_review' | 'in_production' | 'shipped' | 'delivered' | 'cancelled' | 'expired' | 'rx_rejected';
       return_request_type: 'return' | 'replacement' | 'remake';
       return_reason: 'damaged' | 'defective' | 'wrong_size' | 'wrong_rx_typed' | 'wrong_rx_our_fault' | 'change_of_mind' | 'other';
@@ -1352,7 +1399,7 @@ export type Database = {
       drop_feature_tier: 'hero' | 'supporting';
       comm_channel: 'email' | 'sms' | 'push' | 'webhook';
       comm_direction: 'outbound' | 'inbound';
-      comm_type: 'rx_reminder' | 'rx_approved' | 'rx_rejected' | 'order_shipped' | 'return_approved' | 'return_shipped' | 'welcome' | 'drop_launch' | 'review_request' | 'rx_escalation' | 'waitlist_notify' | 'other';
+      comm_type: 'rx_reminder' | 'rx_approved' | 'rx_rejected' | 'order_shipped' | 'return_approved' | 'return_shipped' | 'welcome' | 'drop_launch' | 'review_request' | 'rx_escalation' | 'waitlist_notify' | 'membership_welcome' | 'slot_unlocked' | 'pair_shipped' | 'expiry_warning' | 'renewal_offer' | 'other';
       comm_provider: 'resend' | 'shopify' | 'twilio';
       comm_status: 'queued' | 'sent' | 'delivered' | 'bounced' | 'failed';
       shipment_direction: 'outbound' | 'return_inbound' | 'replacement_outbound';
