@@ -44,6 +44,20 @@ export default async function AccountPage() {
             <p className="text-sm text-muted mt-2">Browse subscriptions and start your membership →</p>
           </Link>
         )}
+        <Link
+          href="/account/orders"
+          className="block border border-line bg-white p-6 hover:border-accent transition-colors"
+        >
+          <h2 className="font-sans text-sm font-bold uppercase tracking-widest text-ink">Orders</h2>
+          <p className="text-sm text-muted mt-2">View your order history and track shipments →</p>
+        </Link>
+        <Link
+          href="/account/addresses"
+          className="block border border-line bg-white p-6 hover:border-accent transition-colors"
+        >
+          <h2 className="font-sans text-sm font-bold uppercase tracking-widest text-ink">Saved addresses</h2>
+          <p className="text-sm text-muted mt-2">Manage addresses to reuse when redeeming a pair →</p>
+        </Link>
         <form action="/account/auth/signout" method="post">
           <button type="submit" className="text-xs font-mono text-muted underline">Sign out</button>
         </form>
