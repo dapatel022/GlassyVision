@@ -1,7 +1,7 @@
 import type { MetadataRoute } from 'next';
 import { getProducts } from '@/lib/commerce/shopify';
 
-const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://glassyvision.com';
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://glassyvision.com';
 
 const STATIC_ROUTES = [
   '/',

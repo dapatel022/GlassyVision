@@ -31,7 +31,7 @@ export async function createInvitation(
     return { success: false, error: 'Failed to create invitation' };
   }
 
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
   return {
     success: true,
     inviteUrl: `${baseUrl}/invite/${invitation.token}`,

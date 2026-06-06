@@ -21,7 +21,7 @@ export async function resendClaimLink(email: string): Promise<{ success: boolean
     .maybeSingle();
 
   if (customer && !customer.auth_user_id) {
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://glassyvision.com';
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://glassyvision.com';
     const claimUrl = buildClaimUrl(customer.id, baseUrl);
     await sendEmail({
       to: customer.email,

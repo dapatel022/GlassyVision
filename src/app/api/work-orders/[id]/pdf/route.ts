@@ -37,7 +37,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         .single()
     : { data: null };
 
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://glassyvision.com';
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://glassyvision.com';
   const pdfBytes = await generateWorkOrderPdf({
     workOrderNumber: wo.work_order_number,
     detailUrl: `${baseUrl}/admin/work-orders/${wo.id}`,
