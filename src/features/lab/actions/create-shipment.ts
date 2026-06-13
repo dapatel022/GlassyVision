@@ -35,10 +35,17 @@ export async function createShipment(input: CreateShipmentInput): Promise<{ succ
 
   const { data: job } = await supabase
     .from('lab_jobs')
-    .select('id, work_order_id, qc_photos')
+    .select('id, work_order_id, qc_photos, completed_at, shipment_id')
     .eq('id', input.jobId)
     .maybeSingle();
   if (!job) return { success: false, error: 'Job not found' };
+
+  // Idempotency / double-click guard: a job that already shipped must not create
+  // a second shipment row (and a second Shopify fulfillment push). The UI disable
+  // is per-render only; this is the real guard.
+  if (job.completed_at || job.shipment_id) {
+    return { success: false, error: 'This job has already been shipped' };
+  }
 
   const { data: wo } = await supabase
     .from('work_orders')

@@ -133,14 +133,14 @@ export default function LabWorkOrderDetail({ workOrder, order, rx, jobId, initia
 
       const save = await addQcPhoto(jobId, storagePath);
       if (save.success) {
-        // Fetch signed URL to render preview
-        const { data: urlData } = await fetch('/api/lab/qc-preview-url', {
+        // Fetch a signed read URL to render the preview.
+        const { signedUrl } = await fetch('/api/lab/qc-preview-url', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ path: storagePath }),
-        }).then(r => r.json());
-        
-        setQcPhotos((prev) => [...prev, urlData?.signedUrl || '']);
+        }).then((r) => r.json());
+
+        setQcPhotos((prev) => [...prev, signedUrl || '']);
       } else {
         throw new Error(save.error ?? 'Failed to link photo to database');
       }

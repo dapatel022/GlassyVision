@@ -23,6 +23,12 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 
   if (!wo) return NextResponse.json({ error: 'Work order not found' }, { status: 404 });
 
+  // A lab-only user may only fetch work orders that have been released to the lab.
+  // Admins (founder/reviewer) may fetch any. A founder is both, so admin wins.
+  if (!isAdminRole(user.role) && isLabRole(user.role) && !wo.released_to_lab_at) {
+    return NextResponse.json({ error: 'Work order not yet released to the lab' }, { status: 403 });
+  }
+
   const { data: order } = await supabase
     .from('orders')
     .select('shopify_order_number, customer_name')
@@ -60,15 +66,29 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   });
 
   const bytes = new Uint8Array(pdfBytes);
-  await supabase.storage
-    .from('work-orders')
-    .upload(`${wo.id}.pdf`, bytes, { contentType: 'application/pdf', upsert: true })
-    .catch(() => null);
+  // Archive to the bucket the migration actually created ('work-order-pdfs', not
+  // 'work-orders'), and only record pdf_storage_path if the upload succeeded —
+  // otherwise the column pointed at a file that was never stored.
+  const { error: uploadErr } = await supabase.storage
+    .from('work-order-pdfs')
+    .upload(`${wo.id}.pdf`, bytes, { contentType: 'application/pdf', upsert: true });
 
-  await supabase
-    .from('work_orders')
-    .update({ pdf_storage_path: `${wo.id}.pdf` })
-    .eq('id', wo.id);
+  if (!uploadErr) {
+    await supabase
+      .from('work_orders')
+      .update({ pdf_storage_path: `${wo.id}.pdf` })
+      .eq('id', wo.id);
+  } else {
+    console.error('[work-order-pdf] archive upload failed', { workOrderId: wo.id, error: uploadErr });
+  }
+
+  // Audit the Rx-PII read (the PDF carries prescription values).
+  await supabase.from('audit_log').insert({
+    user_id: user.id,
+    action: 'work_order_pdf_viewed',
+    entity_type: 'work_orders',
+    entity_id: wo.id,
+  });
 
   return new NextResponse(bytes as BodyInit, {
     headers: {
