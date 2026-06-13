@@ -446,7 +446,12 @@ describe('membership-expiry cron', () => {
 
     const updates: Array<{ table: string; values: Record<string, unknown> }> = [];
     const inserts: Array<{ table: string; values: Record<string, unknown> }> = [];
+    const rpcCalls: Array<{ fn: string; args: Record<string, unknown> }> = [];
     const client = {
+      rpc(fn: string, args: Record<string, unknown>) {
+        rpcCalls.push({ fn, args });
+        return Promise.resolve({ data: 'pool-pp', error: null });
+      },
       from(table: string) {
         if (table === 'subscription_memberships') {
           return {
@@ -545,13 +550,14 @@ describe('membership-expiry cron', () => {
     expect(
       updates.some((u) => u.table === 'subscription_memberships' && u.values.status === 'expired'),
     ).toBe(true);
-    // The pending_payment reservation was released.
+    // The pending_payment reservation was released atomically via the RPC.
+    void inserts;
     expect(
-      inserts.some(
-        (i) =>
-          i.table === 'inventory_adjustments' &&
-          i.values.delta === 1 &&
-          i.values.reason === 'subscription_release',
+      rpcCalls.some(
+        (c) =>
+          c.fn === 'release_inventory_unit' &&
+          c.args.p_variant_id === 222 &&
+          c.args.p_reason === 'subscription_release',
       ),
     ).toBe(true);
   });

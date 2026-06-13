@@ -1373,6 +1373,24 @@ export type Database = {
         Args: Record<string, never>;
         Returns: string | null;
       };
+      reserve_inventory_unit: {
+        Args: {
+          p_variant_id: number;
+          p_reason: Database['public']['Enums']['adjustment_reason'];
+          p_redemption_id?: string | null;
+          p_notes?: string | null;
+        };
+        Returns: string | null;
+      };
+      release_inventory_unit: {
+        Args: {
+          p_variant_id: number;
+          p_reason: Database['public']['Enums']['adjustment_reason'];
+          p_redemption_id?: string | null;
+          p_notes?: string | null;
+        };
+        Returns: string | null;
+      };
     };
     Enums: {
       user_role: 'pending' | 'founder' | 'reviewer' | 'lab_admin' | 'lab_operator' | 'lab_qc' | 'lab_shipping';

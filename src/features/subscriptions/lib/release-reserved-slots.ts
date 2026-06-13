@@ -35,26 +35,13 @@ export async function releaseReservedSlots(
   for (const slot of (pending ?? []) as Array<{ id: string; frame_variant_id: number | null }>) {
     if (slot.frame_variant_id == null) continue;
 
-    const { data: pool } = await supabase
-      .from('inventory_pool')
-      .select('id, pool_quantity')
-      .eq('shopify_variant_id', slot.frame_variant_id)
-      .maybeSingle();
-
-    if (pool) {
-      const poolRow = pool as { id: string; pool_quantity: number };
-      await supabase.from('inventory_adjustments').insert({
-        inventory_pool_id: poolRow.id,
-        delta: 1,
-        reason: 'subscription_release',
-        user_id: null,
-        notes: `Released reservation for expired pending_payment redemption ${slot.id}`,
-      });
-      await supabase
-        .from('inventory_pool')
-        .update({ pool_quantity: Number(poolRow.pool_quantity) + 1 })
-        .eq('id', poolRow.id);
-    }
+    // Atomic +1 release + ledger row in one statement (audit C8).
+    await supabase.rpc('release_inventory_unit', {
+      p_variant_id: slot.frame_variant_id,
+      p_reason: 'subscription_release',
+      p_redemption_id: slot.id,
+      p_notes: `Released reservation for expired pending_payment redemption ${slot.id}`,
+    });
 
     released++;
   }

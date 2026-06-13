@@ -7,8 +7,9 @@ vi.mock('@/lib/auth/customer', () => ({
 }));
 
 const mockFrom = vi.fn();
+const mockRpc = vi.fn();
 vi.mock('@/lib/supabase/admin', () => ({
-  createAdminClient: vi.fn(() => ({ from: mockFrom })),
+  createAdminClient: vi.fn(() => ({ from: mockFrom, rpc: mockRpc })),
 }));
 
 const createCart = vi.fn();
@@ -64,6 +65,16 @@ function install(o: BuildOpts = {}) {
     o.poolUpdate ?? vi.fn(() => ({ eq: () => Promise.resolve({ error: null }) }));
   const adjustInsert = o.adjustInsert ?? vi.fn(() => Promise.resolve({ error: null }));
 
+  // Inventory is now reserved/released via atomic RPCs. reserve returns a pool id
+  // (success) or null when the variant is out of stock — driven by the test pool.
+  mockRpc.mockImplementation((fn: string) => {
+    if (fn === 'reserve_inventory_unit') {
+      const ok = !!pool && Number((pool as { pool_quantity?: number }).pool_quantity) > 0;
+      return Promise.resolve({ data: ok ? ((pool as { id?: string }).id ?? 'pool-1') : null, error: null });
+    }
+    return Promise.resolve({ data: 'pool-1', error: null });
+  });
+
   // The slot fetch returns the redemption with the membership embedded.
   const slotRow = {
     id: 'slot-1',
@@ -115,6 +126,7 @@ beforeEach(() => {
   mockFrom.mockReset();
   createCart.mockReset();
   createRedemptionFulfillmentOrder.mockReset();
+  mockRpc.mockReset();
   getCurrentCustomer.mockResolvedValue({ id: 'cust-1', email: 'a@b.com', authUserId: 'au-1' });
   createRedemptionFulfillmentOrder.mockResolvedValue({ orderId: 'ord-1', lineItemId: 'li-1' });
 });
@@ -170,9 +182,10 @@ describe('startRedemption', () => {
     expect(res.checkoutUrl).toBeUndefined();
     // atomic claim ran
     expect(spies.claimUpdate).toHaveBeenCalled();
-    // inventory reserved with the system reason + null user
-    expect(spies.adjustInsert).toHaveBeenCalledWith(
-      expect.objectContaining({ delta: -1, reason: 'subscription_reserved', user_id: null }),
+    // inventory reserved ATOMICALLY via the RPC (no read-modify-write)
+    expect(mockRpc).toHaveBeenCalledWith(
+      'reserve_inventory_unit',
+      expect.objectContaining({ p_variant_id: 222, p_reason: 'subscription_reserved', p_redemption_id: 'slot-1' }),
     );
     // synthesized order created with the membership's currency + a real email
     expect(createRedemptionFulfillmentOrder).toHaveBeenCalledWith(

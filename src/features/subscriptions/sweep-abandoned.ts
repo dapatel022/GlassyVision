@@ -26,8 +26,13 @@ export async function sweepAbandonedRedemptions(
   let released = 0;
 
   for (const slot of (stale ?? []) as Array<{ id: string; frame_variant_id: number | null }>) {
-    // Reset the slot first so a concurrent confirmation can't double-act on it.
-    await supabase
+    // Reset the slot ONLY if it is still pending_payment. The status guard in the
+    // WHERE clause closes the race with confirmAddonPayment: if a payment
+    // confirmation advanced the slot to awaiting_rx between the read above and
+    // this write, the update matches zero rows and we must NOT release stock
+    // (the slot is now a live, committed order). Releasing unconditionally
+    // produced a phantom unit + a re-redeemable slot (audit sweep↔confirm race).
+    const { data: resetRows } = await supabase
       .from('subscription_redemptions')
       .update({
         status: 'available',
@@ -38,29 +43,20 @@ export async function sweepAbandonedRedemptions(
         is_premium: false,
         pending_payment_expires_at: null,
       })
-      .eq('id', slot.id);
+      .eq('id', slot.id)
+      .eq('status', 'pending_payment')
+      .select('id');
 
-    // Release the reserved unit of stock, if a frame was selected.
+    if (!resetRows || resetRows.length === 0) continue;
+
+    // Release the reserved unit of stock, if a frame was selected (atomic, C8).
     if (slot.frame_variant_id != null) {
-      const { data: pool } = await supabase
-        .from('inventory_pool')
-        .select('id, pool_quantity')
-        .eq('shopify_variant_id', slot.frame_variant_id)
-        .maybeSingle();
-
-      if (pool) {
-        await supabase.from('inventory_adjustments').insert({
-          inventory_pool_id: pool.id,
-          delta: 1,
-          reason: 'subscription_release',
-          user_id: null,
-          notes: `Released abandoned reservation for redemption ${slot.id}`,
-        });
-        await supabase
-          .from('inventory_pool')
-          .update({ pool_quantity: Number(pool.pool_quantity) + 1 })
-          .eq('id', pool.id);
-      }
+      await supabase.rpc('release_inventory_unit', {
+        p_variant_id: slot.frame_variant_id,
+        p_reason: 'subscription_release',
+        p_redemption_id: slot.id,
+        p_notes: `Released abandoned reservation for redemption ${slot.id}`,
+      });
     }
 
     released++;

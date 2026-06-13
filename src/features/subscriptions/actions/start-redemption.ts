@@ -153,14 +153,19 @@ export async function startRedemption(
     return { error: 'This pair is not available.' };
   }
 
-  // 4. Reserve inventory. On out-of-stock, REVERT the slot so no lock is stuck.
-  const { data: pool } = await supabase
-    .from('inventory_pool')
-    .select('id, pool_quantity')
-    .eq('shopify_variant_id', input.frameVariantId)
-    .maybeSingle();
+  // 4. Reserve inventory ATOMICALLY (audit C8). The RPC's conditional
+  // `UPDATE ... WHERE pool_quantity > 0 RETURNING` makes the decrement race-safe
+  // — two concurrent redemptions of the last unit can't both succeed — and writes
+  // the ledger row in the same statement. NULL means out of stock / no pool row;
+  // on that, REVERT the slot so no lock is stuck.
+  const { data: reservedPoolId, error: reserveErr } = await supabase.rpc('reserve_inventory_unit', {
+    p_variant_id: input.frameVariantId,
+    p_reason: 'subscription_reserved',
+    p_redemption_id: input.slotId,
+    p_notes: `Subscription reservation for redemption ${input.slotId}`,
+  });
 
-  if (!pool || Number(pool.pool_quantity) <= 0) {
+  if (reserveErr || !reservedPoolId) {
     await supabase
       .from('subscription_redemptions')
       .update({
@@ -176,18 +181,6 @@ export async function startRedemption(
       .eq('id', input.slotId);
     return { error: 'That frame is out of stock. Please choose another.' };
   }
-
-  await supabase.from('inventory_adjustments').insert({
-    inventory_pool_id: pool.id,
-    delta: -1,
-    reason: 'subscription_reserved',
-    user_id: null,
-    notes: `Subscription reservation for redemption ${input.slotId}`,
-  });
-  await supabase
-    .from('inventory_pool')
-    .update({ pool_quantity: Number(pool.pool_quantity) - 1 })
-    .eq('id', pool.id);
 
   // 5. Fork on surcharge.
   if (!hasSurcharge && expectedSurcharge === 0) {

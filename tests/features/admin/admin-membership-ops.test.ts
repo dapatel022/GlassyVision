@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockFrom = vi.fn();
+const mockRpc = vi.fn(() => Promise.resolve({ data: 'pool-1', error: null }));
 vi.mock('@/lib/supabase/admin', () => ({
-  createAdminClient: vi.fn(() => ({ from: mockFrom })),
+  createAdminClient: vi.fn(() => ({ from: mockFrom, rpc: mockRpc })),
 }));
 
 const getCurrentUser = vi.fn();
@@ -139,6 +140,7 @@ function install(o: InstallOpts = {}) {
 
 beforeEach(() => {
   mockFrom.mockReset();
+  mockRpc.mockClear();
   getCurrentUser.mockReset();
   sendEmail.mockReset();
   getCurrentUser.mockResolvedValue({ id: 'f-1', email: 'f@x.com', role: 'founder', fullName: 'F' });
@@ -174,24 +176,20 @@ describe('expireMembership', () => {
     const { inserts, updates } = install({ reserved: [{ id: 'slot-1', frame_variant_id: 222 }] });
     const res = await expireMembership({ membershipId: 'mem-1' });
     expect(res.success).toBe(true);
-    expect(
-      inserts.filter(
-        (i) =>
-          i.table === 'inventory_adjustments' &&
-          i.values.delta === 1 &&
-          i.values.reason === 'subscription_release',
-      ).length,
-    ).toBe(1);
-    expect(
-      updates.some((u) => u.table === 'inventory_pool' && u.values.pool_quantity === 4),
-    ).toBe(true);
+    void inserts;
+    void updates;
+    expect(mockRpc).toHaveBeenCalledTimes(1);
+    expect(mockRpc).toHaveBeenCalledWith(
+      'release_inventory_unit',
+      expect.objectContaining({ p_variant_id: 222, p_reason: 'subscription_release' }),
+    );
   });
 
   it('releases nothing when no pending_payment slot is reserved', async () => {
-    const { inserts } = install({ reserved: [] });
+    install({ reserved: [] });
     const res = await expireMembership({ membershipId: 'mem-1' });
     expect(res.success).toBe(true);
-    expect(inserts.some((i) => i.table === 'inventory_adjustments')).toBe(false);
+    expect(mockRpc).not.toHaveBeenCalled();
   });
 
   it('is a no-op when membership is already in a terminal state', async () => {

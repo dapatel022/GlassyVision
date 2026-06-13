@@ -1,8 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const from = vi.fn();
+const rpc = vi.fn(() => Promise.resolve({ data: 'pool-x', error: null }));
 
-beforeEach(() => from.mockReset());
+beforeEach(() => {
+  from.mockReset();
+  rpc.mockClear();
+});
 
 /**
  * Build a chainable thenable that resolves to `result` and records every
@@ -65,7 +69,7 @@ describe('handleRefundWebhook', () => {
     });
 
     const { handleRefundWebhook } = await import('@/features/subscriptions/webhooks/handle-refund');
-    const res = await handleRefundWebhook({ order_id: 555 }, { from } as never);
+    const res = await handleRefundWebhook({ order_id: 555 }, { from, rpc } as never);
 
     expect(res.handled).toBe('membership');
     // uncommitted slots expired
@@ -136,18 +140,17 @@ describe('handleRefundWebhook', () => {
     });
 
     const { handleRefundWebhook } = await import('@/features/subscriptions/webhooks/handle-refund');
-    const res = await handleRefundWebhook({ order_id: 555 }, { from } as never);
+    const res = await handleRefundWebhook({ order_id: 555 }, { from, rpc } as never);
 
     expect(res.handled).toBe('membership');
-    expect(
-      inserts.filter(
-        (i) =>
-          i.table === 'inventory_adjustments' &&
-          i.values.delta === 1 &&
-          i.values.reason === 'subscription_release',
-      ).length,
-    ).toBe(1);
-    expect(poolUpdates).toContainEqual(expect.objectContaining({ pool_quantity: 2 }));
+    void inserts;
+    void poolUpdates;
+    // The reserved unit is released atomically via the RPC, exactly once.
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(rpc).toHaveBeenCalledWith(
+      'release_inventory_unit',
+      expect.objectContaining({ p_variant_id: 444, p_reason: 'subscription_release' }),
+    );
   });
 
   it('reverts an UNCOMMITTED add-on redemption to available and releases inventory', async () => {
@@ -173,31 +176,10 @@ describe('handleRefundWebhook', () => {
                 }),
             }),
           }),
+          // Reset chain is now .update().eq().in().select() → a matched row.
           update: (values: Record<string, unknown>) => {
             updates.push({ table, values });
-            return { eq: () => ({ in: () => Promise.resolve({ error: null }) }) };
-          },
-        };
-      }
-      if (table === 'inventory_pool') {
-        return {
-          select: () => ({
-            eq: () => ({
-              maybeSingle: () =>
-                Promise.resolve({ data: { id: 'pool-1', pool_quantity: 2 }, error: null }),
-            }),
-          }),
-          update: (values: Record<string, unknown>) => {
-            updates.push({ table, values });
-            return { eq: () => Promise.resolve({ error: null }) };
-          },
-        };
-      }
-      if (table === 'inventory_adjustments') {
-        return {
-          insert: (values: Record<string, unknown>) => {
-            inserts.push({ table, values });
-            return Promise.resolve({ error: null });
+            return { eq: () => ({ in: () => ({ select: () => Promise.resolve({ data: [{ id: 'slot-9' }], error: null }) }) }) };
           },
         };
       }
@@ -205,22 +187,20 @@ describe('handleRefundWebhook', () => {
     });
 
     const { handleRefundWebhook } = await import('@/features/subscriptions/webhooks/handle-refund');
-    const res = await handleRefundWebhook({ order_id: 777 }, { from } as never);
+    const res = await handleRefundWebhook({ order_id: 777 }, { from, rpc } as never);
 
     expect(res.handled).toBe('addon');
+    void inserts;
     expect(
       updates.some(
         (u) => u.table === 'subscription_redemptions' && u.values.status === 'available',
       ),
     ).toBe(true);
-    expect(
-      inserts.some(
-        (i) =>
-          i.table === 'inventory_adjustments' &&
-          i.values.delta === 1 &&
-          i.values.reason === 'subscription_release',
-      ),
-    ).toBe(true);
+    // Released atomically via the RPC for the selected frame variant.
+    expect(rpc).toHaveBeenCalledWith(
+      'release_inventory_unit',
+      expect.objectContaining({ p_variant_id: 333, p_reason: 'subscription_release' }),
+    );
   });
 
   it('leaves a COMMITTED add-on redemption untouched and flags it for admin review', async () => {
@@ -289,7 +269,7 @@ describe('handleRefundWebhook', () => {
     });
 
     const { handleRefundWebhook } = await import('@/features/subscriptions/webhooks/handle-refund');
-    const res = await handleRefundWebhook({ order_id: 777 }, { from } as never);
+    const res = await handleRefundWebhook({ order_id: 777 }, { from, rpc } as never);
 
     expect(res.handled).toBe('addon');
     // No revert to available.
@@ -298,8 +278,9 @@ describe('handleRefundWebhook', () => {
         (u) => u.table === 'subscription_redemptions' && u.values.status === 'available',
       ),
     ).toBe(false);
-    // No inventory re-credit.
+    // No inventory re-credit (neither legacy ledger insert nor the release RPC).
     expect(inserts.some((i) => i.table === 'inventory_adjustments')).toBe(false);
+    expect(rpc).not.toHaveBeenCalled();
     // Flagged for manual review.
     expect(inserts.some((i) => i.table === 'audit_log')).toBe(true);
   });
@@ -343,7 +324,7 @@ describe('handleRefundWebhook', () => {
     });
 
     const { handleRefundWebhook } = await import('@/features/subscriptions/webhooks/handle-refund');
-    await expect(handleRefundWebhook({ order_id: 555 }, { from } as never)).rejects.toThrow();
+    await expect(handleRefundWebhook({ order_id: 555 }, { from, rpc } as never)).rejects.toThrow();
   });
 
   it('is a no-op for orders that match no membership or add-on', async () => {
@@ -366,7 +347,7 @@ describe('handleRefundWebhook', () => {
     });
 
     const { handleRefundWebhook } = await import('@/features/subscriptions/webhooks/handle-refund');
-    const res = await handleRefundWebhook({ order_id: 999 }, { from } as never);
+    const res = await handleRefundWebhook({ order_id: 999 }, { from, rpc } as never);
     expect(res.handled).toBe('none');
   });
 
@@ -391,7 +372,7 @@ describe('handleRefundWebhook', () => {
     });
 
     const { handleRefundWebhook } = await import('@/features/subscriptions/webhooks/handle-refund');
-    const res = await handleRefundWebhook({ order_id: 555 }, { from } as never);
+    const res = await handleRefundWebhook({ order_id: 555 }, { from, rpc } as never);
     expect(res.handled).toBe('membership');
     expect(updates.length).toBe(0);
   });

@@ -134,7 +134,10 @@ export async function handleRefundWebhook(
     // sweep-abandoned revert so a refunded surcharge frees the slot for reuse.
     // Re-check the uncommitted status in the WHERE clause to close the race
     // between the read above and this write.
-    await supabase
+    // Re-check the uncommitted status in the WHERE and only release stock if THIS
+    // update actually flipped the slot. If a concurrent sweep already freed it,
+    // we match zero rows and must not release again (would double-credit stock).
+    const { data: resetRows } = await supabase
       .from('subscription_redemptions')
       .update({
         status: 'available',
@@ -147,30 +150,17 @@ export async function handleRefundWebhook(
         add_on_shopify_order_id: null,
       })
       .eq('id', slot.id)
-      .in('status', UNCOMMITTED_STATUSES as unknown as string[]);
+      .in('status', UNCOMMITTED_STATUSES as unknown as string[])
+      .select('id');
 
-    // Release the reserved unit of stock, if a frame was selected.
-    if (slot.frame_variant_id != null) {
-      const { data: pool } = await supabase
-        .from('inventory_pool')
-        .select('id, pool_quantity')
-        .eq('shopify_variant_id', slot.frame_variant_id)
-        .maybeSingle();
-
-      if (pool) {
-        const poolRow = pool as { id: string; pool_quantity: number };
-        await supabase.from('inventory_adjustments').insert({
-          inventory_pool_id: poolRow.id,
-          delta: 1,
-          reason: 'subscription_release',
-          user_id: null,
-          notes: `Released reservation for refunded add-on on redemption ${slot.id}`,
-        });
-        await supabase
-          .from('inventory_pool')
-          .update({ pool_quantity: Number(poolRow.pool_quantity) + 1 })
-          .eq('id', poolRow.id);
-      }
+    // Release the reserved unit of stock, if a frame was selected (atomic, C8).
+    if (resetRows && resetRows.length > 0 && slot.frame_variant_id != null) {
+      await supabase.rpc('release_inventory_unit', {
+        p_variant_id: slot.frame_variant_id,
+        p_reason: 'subscription_release',
+        p_redemption_id: slot.id,
+        p_notes: `Released reservation for refunded add-on on redemption ${slot.id}`,
+      });
     }
 
     return { handled: 'addon' };

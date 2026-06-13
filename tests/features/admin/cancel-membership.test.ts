@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockFrom = vi.fn();
+const mockRpc = vi.fn(() => Promise.resolve({ data: 'pool-1', error: null }));
 vi.mock('@/lib/supabase/admin', () => ({
-  createAdminClient: vi.fn(() => ({ from: mockFrom })),
+  createAdminClient: vi.fn(() => ({ from: mockFrom, rpc: mockRpc })),
 }));
 
 vi.mock('@/lib/auth/middleware', () => ({
@@ -190,25 +191,22 @@ describe('cancelMembership', () => {
     const res = await cancelMembership({ membershipId: 'mem-1', reason: 'with reservation' });
 
     expect(res.success).toBe(true);
-    expect(
-      inserts.filter(
-        (i) =>
-          i.table === 'inventory_adjustments' &&
-          i.values.delta === 1 &&
-          i.values.reason === 'subscription_release',
-      ).length,
-    ).toBe(1);
-    expect(
-      updates.some((u) => u.table === 'inventory_pool' && u.values.pool_quantity === 4),
-    ).toBe(true);
+    void inserts;
+    void updates;
+    // Reservation released atomically via the RPC, exactly once.
+    expect(mockRpc).toHaveBeenCalledTimes(1);
+    expect(mockRpc).toHaveBeenCalledWith(
+      'release_inventory_unit',
+      expect.objectContaining({ p_variant_id: 222, p_reason: 'subscription_release' }),
+    );
   });
 
   it('releases nothing when no pending_payment slot is reserved', async () => {
-    const { inserts } = install({ reserved: [] });
+    install({ reserved: [] });
     const { cancelMembership } = await import('@/features/admin/memberships/actions/cancel-membership');
     const res = await cancelMembership({ membershipId: 'mem-1', reason: 'no reservation' });
     expect(res.success).toBe(true);
-    expect(inserts.some((i) => i.table === 'inventory_adjustments')).toBe(false);
+    expect(mockRpc).not.toHaveBeenCalled();
   });
 
   it('is idempotent: a no-op when the membership is not active/grace/disputed', async () => {
