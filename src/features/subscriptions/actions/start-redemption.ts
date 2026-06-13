@@ -81,7 +81,10 @@ export async function startRedemption(
   if (membership.customer_id !== customer.id) {
     return { error: 'This pair is not available.' };
   }
-  if (membership.status !== 'active') {
+  // Active OR grace may redeem: the account page surfaces unredeemed pairs for
+  // both, and a grace-period member still holds a valid (just-lapsed) membership
+  // within the grace window. Disputed/frozen/terminal states cannot redeem.
+  if (membership.status !== 'active' && membership.status !== 'grace') {
     return { error: 'Your subscription is not active.' };
   }
 

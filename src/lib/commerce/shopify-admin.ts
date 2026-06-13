@@ -122,9 +122,10 @@ export async function createFulfillment(
  * so we never hardcode shipping=0 or over-refund past what is captured.
  */
 export async function calculateRefund(orderId: number, amount: number, currency: string) {
+  // Shopify expects uppercase ISO currency ('USD'/'CAD'); our DB stores lowercase.
   return adminFetch(`orders/${orderId}/refunds/calculate.json`, {
     method: 'POST',
-    body: { refund: { currency, shipping: { full_refund: false }, transactions: [{ kind: 'refund' }] } },
+    body: { refund: { currency: currency.toUpperCase(), shipping: { full_refund: false }, transactions: [{ kind: 'refund' }] } },
   }) as Promise<{
     refund: {
       shipping?: { amount: string };
@@ -185,7 +186,7 @@ export async function createRefund(
     method: 'POST',
     body: {
       refund: {
-        currency,
+        currency: currency.toUpperCase(),
         note,
         shipping: calc.refund.shipping ?? { amount: '0.00' },
         transactions: [

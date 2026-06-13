@@ -84,6 +84,41 @@ describe('handleDisputeWebhook', () => {
     expect(inserts.length).toBe(0);
   });
 
+  it('flags a dispute opened against an already-terminal (expired) membership', async () => {
+    const updates: Array<{ table: string; values: Record<string, unknown> }> = [];
+    const inserts: Array<{ table: string; values: Record<string, unknown> }> = [];
+
+    from.mockImplementation((table: string) => {
+      if (table === 'subscription_memberships') {
+        return {
+          select: () => ({
+            eq: () => ({ maybeSingle: () => Promise.resolve({ data: { id: 'mem-1', status: 'expired' }, error: null }) }),
+          }),
+          update: (values: Record<string, unknown>) => {
+            updates.push({ table, values });
+            return { eq: () => Promise.resolve({ error: null }) };
+          },
+        };
+      }
+      if (table === 'audit_log') {
+        return {
+          insert: (values: Record<string, unknown>) => {
+            inserts.push({ table, values });
+            return Promise.resolve({ error: null });
+          },
+        };
+      }
+      return {};
+    });
+
+    const { handleDisputeWebhook } = await import('@/features/subscriptions/webhooks/handle-dispute');
+    const res = await handleDisputeWebhook({ order_id: 555 }, { from } as never);
+    expect(res.handled).toBe('membership');
+    // Status not changed (already terminal) but the chargeback is surfaced.
+    expect(updates.length).toBe(0);
+    expect(inserts.some((i) => i.values.action === 'membership_dispute_on_terminal')).toBe(true);
+  });
+
   it('is a no-op for orders that match no membership', async () => {
     from.mockImplementation((table: string) => {
       if (table === 'subscription_memberships') {

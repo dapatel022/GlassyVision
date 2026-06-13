@@ -40,9 +40,22 @@ export async function handleDisputeWebhook(
 
   const mem = membership as { id: string; status: string };
 
-  // Idempotency: once disputed (or already in a terminal money state) a
-  // re-delivered dispute webhook is a no-op.
-  if (['disputed', 'refunded', 'cancelled', 'expired'].includes(mem.status)) {
+  // A re-delivered dispute for an already-`disputed` membership is a true no-op.
+  if (mem.status === 'disputed') {
+    return { handled: 'membership' };
+  }
+
+  // A dispute opened against an already-terminal membership (refunded/cancelled/
+  // expired) can't transition it, but must NOT vanish — a chargeback can be filed
+  // well after a membership ends. Flag it for manual admin review.
+  if (['refunded', 'cancelled', 'expired'].includes(mem.status)) {
+    await supabase.from('audit_log').insert({
+      user_id: null,
+      action: 'membership_dispute_on_terminal',
+      entity_type: 'subscription_membership',
+      entity_id: mem.id,
+      after_data: { status: mem.status, shopify_order_id: orderId },
+    });
     return { handled: 'membership' };
   }
 

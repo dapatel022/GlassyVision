@@ -134,20 +134,32 @@ export async function POST(request: NextRequest) {
         break;
       }
       case 'orders/cancelled': {
-        const shopifyOrderId = (payload as { id?: number }).id;
+        const cancelPayload = payload as { id?: number; financial_status?: string };
+        const shopifyOrderId = cancelPayload.id;
         if (shopifyOrderId) {
           const { data: order } = await supabase
             .from('orders')
-            .select('id')
+            .select('id, fulfillment_status')
             .eq('shopify_order_id', shopifyOrderId)
             .maybeSingle();
 
           if (order) {
+            // Cancellation does NOT imply a refund — map the payload's actual
+            // financial status (an unpaid/voided cancel is common) instead of
+            // hardcoding 'refunded'. And never downgrade an order that already
+            // shipped/delivered back to 'unfulfilled'.
+            const fin = cancelPayload.financial_status;
+            const financialStatus =
+              fin === 'refunded' ? 'refunded' :
+              fin === 'partially_refunded' ? 'partial_refund' :
+              fin === 'paid' ? 'paid' : 'pending';
+            const alreadyShipped = order.fulfillment_status === 'shipped' || order.fulfillment_status === 'delivered';
+
             await supabase
               .from('orders')
               .update({
-                financial_status: 'refunded',
-                fulfillment_status: 'unfulfilled',
+                financial_status: financialStatus,
+                ...(alreadyShipped ? {} : { fulfillment_status: 'unfulfilled' as const }),
                 rx_status: 'none',
                 notes_internal: `Order cancelled in Shopify on ${new Date().toISOString()}`,
                 updated_at: new Date().toISOString(),

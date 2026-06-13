@@ -151,11 +151,19 @@ describe('startRedemption', () => {
     expect(createRedemptionFulfillmentOrder).not.toHaveBeenCalled();
   });
 
-  it('rejects when the membership is not active', async () => {
+  it('rejects when the membership is not active or grace (e.g. expired)', async () => {
     install({ membership: { id: 'mem-1', customer_id: 'cust-1', status: 'expired', currency: 'usd', customers: { email: 'a@b.com' } } });
     const { startRedemption } = await import('@/features/subscriptions/actions/start-redemption');
     const res = await startRedemption(baseInput);
     expect(res.error).toBeTruthy();
+  });
+
+  it('ALLOWS redemption during the grace period (matches the account UI)', async () => {
+    install({ membership: { id: 'mem-1', customer_id: 'cust-1', status: 'grace', currency: 'usd', customers: { email: 'a@b.com' } } });
+    const { startRedemption } = await import('@/features/subscriptions/actions/start-redemption');
+    const res = await startRedemption(baseInput);
+    expect(res.ok).toBe(true);
+    expect(res.error).toBeUndefined();
   });
 
   it('rejects a non-US/CA destination', async () => {
