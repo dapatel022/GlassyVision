@@ -1,6 +1,7 @@
 'use server';
 
 import { createAdminClient } from '@/lib/supabase/admin';
+import { getCurrentUser, isAdminRole } from '@/lib/auth/middleware';
 import type { Database } from '@/lib/supabase/types';
 import { adminFetch, updateInventoryLevel } from '@/lib/commerce/shopify-admin';
 
@@ -10,9 +11,14 @@ export async function adjustInventory(
   poolId: string,
   delta: number,
   reason: AdjustmentReason,
-  userId: string,
   notes: string | null = null,
 ): Promise<{ success: boolean; error?: string }> {
+  const user = await getCurrentUser();
+  if (!user || !isAdminRole(user.role)) {
+    return { success: false, error: 'Forbidden' };
+  }
+  const userId = user.id;
+
   const supabase = createAdminClient();
 
   const { data: pool } = await supabase
@@ -32,13 +38,18 @@ export async function adjustInventory(
     .eq('id', poolId);
   if (updErr) return { success: false, error: 'Failed to update pool' };
 
-  await supabase.from('inventory_adjustments').insert({
+  const { error: ledgerErr } = await supabase.from('inventory_adjustments').insert({
     inventory_pool_id: poolId,
     delta,
     reason,
     user_id: userId,
     notes,
   });
+  if (ledgerErr) {
+    // The pool was already mutated; a missing ledger row breaks the audit trail.
+    // Log loudly so the drift is visible rather than silently lost.
+    console.error('[adjust-inventory] ledger insert failed', { poolId, delta, error: ledgerErr });
+  }
 
   return { success: true };
 }
@@ -57,6 +68,11 @@ interface ShopifyLocationsResponse {
 }
 
 export async function pushInventoryToShopify(poolId: string): Promise<{ success: boolean; message: string; error?: string }> {
+  const user = await getCurrentUser();
+  if (!user || !isAdminRole(user.role)) {
+    return { success: false, message: 'Forbidden', error: 'Forbidden' };
+  }
+
   const supabase = createAdminClient();
 
   const { data: pool } = await supabase

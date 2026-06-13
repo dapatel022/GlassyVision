@@ -39,7 +39,6 @@ interface Props {
   ret: ReturnRow;
   order: Order;
   lineItem: LineItem | null;
-  reviewerUserId: string;
 }
 
 const DECISIONS: Array<{ value: AdminDecision; label: string }> = [
@@ -50,7 +49,7 @@ const DECISIONS: Array<{ value: AdminDecision; label: string }> = [
   { value: 'rejected', label: 'Reject' },
 ];
 
-export default function ReturnDetail({ ret, order, lineItem, reviewerUserId }: Props) {
+export default function ReturnDetail({ ret, order, lineItem }: Props) {
   const router = useRouter();
   const [decision, setDecision] = useState<AdminDecision>('approved_refund');
   const [notes, setNotes] = useState(ret.admin_notes ?? '');
@@ -65,7 +64,6 @@ export default function ReturnDetail({ ret, order, lineItem, reviewerUserId }: P
     setError(null);
     const result = await reviewReturn({
       returnId: ret.id,
-      reviewerUserId,
       decision,
       adminNotes: notes || null,
       storeCreditAmount: decision === 'approved_credit' && creditAmount ? Number(creditAmount) : null,

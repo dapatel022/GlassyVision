@@ -1,6 +1,7 @@
 'use server';
 
 import { createAdminClient } from '@/lib/supabase/admin';
+import { getCurrentUser, isAdminRole } from '@/lib/auth/middleware';
 import type { Database, Json } from '@/lib/supabase/types';
 import { createRefund } from '@/lib/commerce/shopify-admin';
 
@@ -8,7 +9,6 @@ type AdminDecision = Database['public']['Enums']['return_admin_decision'];
 
 export interface ReviewReturnInput {
   returnId: string;
-  reviewerUserId: string;
   decision: AdminDecision;
   adminNotes: string | null;
   storeCreditAmount?: number | null;
@@ -21,6 +21,13 @@ interface ShopifyRefundResponse {
 }
 
 export async function reviewReturn(input: ReviewReturnInput): Promise<{ success: boolean; error?: string }> {
+  // Auth: this action issues real Shopify refunds — it must verify the caller is
+  // an admin and derive the reviewer id from the session, never from input.
+  const user = await getCurrentUser();
+  if (!user || !isAdminRole(user.role)) {
+    return { success: false, error: 'Forbidden' };
+  }
+
   const supabase = createAdminClient();
 
   // Retrieve returns request with order and line item details
@@ -81,7 +88,7 @@ export async function reviewReturn(input: ReviewReturnInput): Promise<{ success:
   if (error) return { success: false, error: 'Failed to save decision' };
 
   await supabase.from('audit_log').insert({
-    user_id: input.reviewerUserId,
+    user_id: user.id,
     action: 'return_review',
     entity_type: 'returns',
     entity_id: input.returnId,

@@ -8,11 +8,7 @@ const ROLES = ['founder', 'reviewer', 'lab_admin', 'lab_operator', 'lab_qc', 'la
 
 type Role = (typeof ROLES)[number];
 
-interface Props {
-  invitedByUserId: string;
-}
-
-export default function InviteForm({ invitedByUserId }: Props) {
+export default function InviteForm() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<Role>('lab_operator');
@@ -26,7 +22,7 @@ export default function InviteForm({ invitedByUserId }: Props) {
     setError(null);
     setInviteUrl(null);
 
-    const result = await createInvitation(email, role, invitedByUserId);
+    const result = await createInvitation(email, role);
     if (result.success && result.inviteUrl) {
       setInviteUrl(result.inviteUrl);
       setEmail('');

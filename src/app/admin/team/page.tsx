@@ -74,10 +74,12 @@ export default async function TeamPage() {
         </div>
       </section>
 
-      <section>
-        <h2 className="font-sans font-bold text-sm uppercase tracking-wider text-muted-soft mb-3">Invite someone</h2>
-        <InviteForm invitedByUserId={user.id} />
-      </section>
+      {user.role === 'founder' && (
+        <section>
+          <h2 className="font-sans font-bold text-sm uppercase tracking-wider text-muted-soft mb-3">Invite someone</h2>
+          <InviteForm />
+        </section>
+      )}
     </div>
   );
 }

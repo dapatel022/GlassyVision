@@ -5,6 +5,15 @@ vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn(() => ({ from: mockFrom })),
 }));
 
+vi.mock('@/lib/auth/middleware', () => ({
+  getCurrentUser: vi.fn(() =>
+    Promise.resolve({ id: 'admin-1', email: 'a@x.com', role: 'founder', fullName: 'A' }),
+  ),
+  isAdminRole: (role: string) => role === 'founder' || role === 'reviewer',
+  isLabRole: (role: string) =>
+    ['founder', 'lab_admin', 'lab_operator', 'lab_qc', 'lab_shipping'].includes(role),
+}));
+
 function buildRxFileRead(
   reviewDecision: 'approved' | 'rejected' | null = 'approved',
   image: { storage_path: string | null; deleted_at: string | null } = { storage_path: 'rx/1.jpg', deleted_at: null },
@@ -54,7 +63,10 @@ describe('generateWorkOrder', () => {
       })),
     }));
     const labJobInsert = vi.fn(() => Promise.resolve({ error: null }));
-    const existingCountSelect = vi.fn(() => ({
+    // work_orders.select serves two queries: the idempotency dedup
+    // (.eq(rx_file_id).maybeSingle() → none) and the monthly count (.gte → 0).
+    const workOrdersSelect = vi.fn(() => ({
+      eq: vi.fn(() => ({ maybeSingle: vi.fn(() => Promise.resolve({ data: null, error: null })) })),
       gte: vi.fn(() => Promise.resolve({ data: [], error: null, count: 0 })),
     }));
 
@@ -63,9 +75,10 @@ describe('generateWorkOrder', () => {
       if (table === 'orders') return { select: () => ({ eq: () => ({ single: () => Promise.resolve({ data: { billing_country: 'us', shipping_address: { country_code: 'US' } }, error: null }) }) }) };
       if (table === 'work_orders') return {
         insert: workOrderInsert,
-        select: existingCountSelect,
+        select: workOrdersSelect,
       };
       if (table === 'lab_jobs') return { insert: labJobInsert };
+      if (table === 'audit_log') return { insert: vi.fn(() => Promise.resolve({ error: null })) };
       // Status mirroring (Task 7) — no-op for a normal Shopify order.
       if (table === 'subscription_redemptions') return { update: () => ({ eq: () => ({ select: () => Promise.resolve({ data: [], error: null }) }) }) };
       return {};

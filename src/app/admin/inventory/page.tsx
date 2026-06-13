@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { getCurrentUser } from '@/lib/auth/middleware';
+import { getCurrentUser, isAdminRole } from '@/lib/auth/middleware';
 import { createAdminClient } from '@/lib/supabase/admin';
 import InventoryTable from '@/features/admin/inventory/components/InventoryTable';
 
@@ -9,6 +9,7 @@ export const dynamic = 'force-dynamic';
 export default async function InventoryPage() {
   const user = await getCurrentUser();
   if (!user) redirect('/login?redirect=/admin/inventory');
+  if (!isAdminRole(user.role)) redirect('/unauthorized');
 
   const supabase = createAdminClient();
   const { data: pool } = await supabase
@@ -29,7 +30,7 @@ export default async function InventoryPage() {
           <p className="text-sm text-muted font-serif italic">{pool?.length ?? 0} SKUs tracked</p>
         </div>
       </div>
-      <InventoryTable rows={pool ?? []} userId={user.id} />
+      <InventoryTable rows={pool ?? []} />
     </div>
   );
 }

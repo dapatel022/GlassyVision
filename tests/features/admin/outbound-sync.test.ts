@@ -17,6 +17,15 @@ vi.mock('@/lib/supabase/admin', () => ({
   })),
 }));
 
+vi.mock('@/lib/auth/middleware', () => ({
+  getCurrentUser: vi.fn(() =>
+    Promise.resolve({ id: 'admin-1', email: 'a@x.com', role: 'founder', fullName: 'A' }),
+  ),
+  isAdminRole: (role: string) => role === 'founder' || role === 'reviewer',
+  isLabRole: (role: string) =>
+    ['founder', 'lab_admin', 'lab_operator', 'lab_qc', 'lab_shipping'].includes(role),
+}));
+
 describe('Outbound Shopify Integrations', () => {
   beforeEach(() => {
     mockAdminFetch.mockReset();
@@ -98,7 +107,6 @@ describe('Outbound Shopify Integrations', () => {
       const { reviewReturn } = await import('@/features/admin/returns/actions/review-return');
       const result = await reviewReturn({
         returnId: 'ret-123',
-        reviewerUserId: 'user-uuid',
         decision: 'approved_refund',
         adminNotes: 'Looks good',
       });
@@ -142,7 +150,6 @@ describe('Outbound Shopify Integrations', () => {
       const { reviewReturn } = await import('@/features/admin/returns/actions/review-return');
       const result = await reviewReturn({
         returnId: 'ret-123',
-        reviewerUserId: 'user-uuid',
         decision: 'approved_refund',
         adminNotes: 'Refund me',
       });

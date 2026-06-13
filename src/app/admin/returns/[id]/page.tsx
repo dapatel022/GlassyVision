@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
-import { getCurrentUser } from '@/lib/auth/middleware';
+import { getCurrentUser, isAdminRole } from '@/lib/auth/middleware';
 import { createAdminClient } from '@/lib/supabase/admin';
 import ReturnDetail from '@/features/admin/returns/components/ReturnDetail';
 
@@ -13,6 +13,7 @@ interface PageProps {
 export default async function ReturnDetailPage({ params }: PageProps) {
   const user = await getCurrentUser();
   if (!user) redirect('/login?redirect=/admin/returns');
+  if (!isAdminRole(user.role)) redirect('/unauthorized');
 
   const { id } = await params;
   const supabase = createAdminClient();
@@ -49,7 +50,6 @@ export default async function ReturnDetailPage({ params }: PageProps) {
         ret={ret}
         order={order ?? { shopify_order_number: '—', customer_name: '—', total: 0 }}
         lineItem={lineItem}
-        reviewerUserId={user.id}
       />
     </div>
   );

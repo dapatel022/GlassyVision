@@ -1,6 +1,7 @@
 'use server';
 
 import { createAdminClient } from '@/lib/supabase/admin';
+import { getCurrentUser, isAdminRole } from '@/lib/auth/middleware';
 import type { Database, Json } from '@/lib/supabase/types';
 import { isRxExpired } from '@/lib/rx/expiration';
 import { isDispensableDestination } from '@/lib/rx/market';
@@ -29,6 +30,13 @@ function buildWorkOrderNumber(sequence: number): string {
 }
 
 export async function generateWorkOrder(rxFileId: string): Promise<GenerateWorkOrderResult> {
+  // Auth: callable directly as a server action, so it re-verifies the admin role
+  // even though its only in-app caller (reviewRx) is already gated.
+  const user = await getCurrentUser();
+  if (!user || !isAdminRole(user.role)) {
+    return { success: false, error: 'Forbidden' };
+  }
+
   const supabase = createAdminClient();
 
   const { data: rxFile, error: fetchError } = await supabase
@@ -84,6 +92,18 @@ export async function generateWorkOrder(rxFileId: string): Promise<GenerateWorkO
     return { success: false, error: 'Rx file missing line_item_id' };
   }
 
+  // Idempotency: a work order is generated once per approved Rx file. There is no
+  // DB UNIQUE on work_orders.rx_file_id, so guard here — a repeated approval/call
+  // must not spawn duplicate work orders + lab jobs.
+  const { data: existingWo } = await supabase
+    .from('work_orders')
+    .select('id, work_order_number')
+    .eq('rx_file_id', rxFile.id)
+    .maybeSingle();
+  if (existingWo) {
+    return { success: true, workOrderId: existingWo.id, workOrderNumber: existingWo.work_order_number };
+  }
+
   const lineItem = (rxFile as unknown as {
     order_line_items: { id: string; sku: string | null; product_title: string; frame_shape: string | null; frame_color: string | null; frame_size: string | null };
   }).order_line_items;
@@ -135,6 +155,17 @@ export async function generateWorkOrder(rxFileId: string): Promise<GenerateWorkO
 
   if (jobError) {
     return { success: false, error: 'Work order created but lab job failed' };
+  }
+
+  const { error: auditError } = await supabase.from('audit_log').insert({
+    user_id: user.id,
+    action: 'work_order_generated',
+    entity_type: 'work_orders',
+    entity_id: inserted.id,
+    after_data: { work_order_number: inserted.work_order_number, rx_file_id: rxFile.id } as unknown as Json,
+  });
+  if (auditError) {
+    console.error('[generate-work-order] audit_log insert failed', { workOrderId: inserted.id, error: auditError });
   }
 
   // Mirror status onto a linked subscription redemption (no-op for normal

@@ -17,10 +17,9 @@ interface Row {
 
 interface Props {
   rows: Row[];
-  userId: string;
 }
 
-export default function InventoryTable({ rows, userId }: Props) {
+export default function InventoryTable({ rows }: Props) {
   const router = useRouter();
   const [working, setWorking] = useState<string | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
@@ -31,7 +30,7 @@ export default function InventoryTable({ rows, userId }: Props) {
     const delta = Number(input);
     if (isNaN(delta) || delta === 0) return;
     setWorking(row.id);
-    const result = await adjustInventory(row.id, delta, 'manual_correction', userId, null);
+    const result = await adjustInventory(row.id, delta, 'manual_correction', null);
     if (result.success) {
       router.refresh();
     } else {
