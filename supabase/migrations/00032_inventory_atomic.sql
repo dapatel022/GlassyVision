@@ -74,3 +74,13 @@ begin
   return v_pool_id;
 end;
 $$;
+
+-- Lock execution to the service role only. By default Postgres grants EXECUTE on
+-- new functions to PUBLIC, which (with PostgREST) would let anyone holding the
+-- anon/authenticated key call these RPCs and mutate stock directly. The server
+-- always invokes them through the service-role admin client, so revoke PUBLIC
+-- and grant only service_role.
+revoke execute on function reserve_inventory_unit(bigint, adjustment_reason, uuid, text) from public;
+revoke execute on function release_inventory_unit(bigint, adjustment_reason, uuid, text) from public;
+grant execute on function reserve_inventory_unit(bigint, adjustment_reason, uuid, text) to service_role;
+grant execute on function release_inventory_unit(bigint, adjustment_reason, uuid, text) to service_role;
