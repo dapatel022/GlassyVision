@@ -92,20 +92,6 @@ function selectReminderDay(
 }
 
 /**
- * Fetch the order's ORIGINAL captured amount (sum of success capture/sale
- * transactions) from Shopify so the pro-rata BASE is not understated by a prior
- * partial refund. The remaining refundable still caps the issued amount inside
- * `createRefund`. Never derive money from a mirrored price.
- */
-async function fetchCapturedAmount(shopifyOrderId: number, currency: string): Promise<number> {
-  try {
-    return await getCapturedAmount(shopifyOrderId, currency);
-  } catch {
-    return 0;
-  }
-}
-
-/**
  * Daily membership lifecycle cron:
  *  - Reminder phase: for `active` memberships with `term_end` inside a
  *    `reminder_days` window, send `expiry_warning` (once per (membership, day)).
@@ -168,10 +154,21 @@ export async function GET(request: Request): Promise<Response> {
           skipped++;
           continue;
         }
-        const capturedAmount =
-          policy.mode === 'refund'
-            ? await fetchCapturedAmount(m.shopify_order_id, m.currency)
-            : 0;
+        let capturedAmount = 0;
+        if (policy.mode === 'refund') {
+          try {
+            capturedAmount = await getCapturedAmount(m.shopify_order_id, m.currency);
+          } catch (err) {
+            // C7: never mark a membership 'refunded' and expire its pairs without
+            // first confirming the captured amount from Shopify. Swallowing this
+            // to 0 used to issue no refund yet still set status='refunded',
+            // silently confiscating the customer's money. Skip and retry next tick.
+            const message = err instanceof Error ? err.message : 'unknown';
+            errors.push({ membershipId: m.id, error: `capture-fetch: ${message}` });
+            skipped++;
+            continue;
+          }
+        }
         const eotMembership: EndOfTermMembership = {
           id: m.id,
           status: m.status,

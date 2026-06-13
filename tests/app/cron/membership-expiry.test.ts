@@ -258,6 +258,42 @@ describe('membership-expiry cron', () => {
     ).toBe(true);
   });
 
+  it('C7: does NOT mark refunded (or refund) when Shopify capture lookup fails', async () => {
+    getCapturedAmount.mockRejectedValueOnce(new Error('Shopify 503'));
+    const termEnd = new Date(NOW.getTime() - 20 * 86400_000).toISOString();
+    const graceStart = new Date(NOW.getTime() - 20 * 86400_000).toISOString();
+    const { updates } = mockSupabase({
+      memberships: [
+        {
+          id: 'mem-1',
+          status: 'grace',
+          customer_id: 'cust-1',
+          shopify_order_id: 555,
+          currency: 'USD',
+          pairs_total: 3,
+          term_start: '2025-06-15T00:00:00.000Z',
+          term_end: termEnd,
+          term_months: 12,
+          rollover_count: 0,
+          grace_start: graceStart,
+          end_of_term_policy: { mode: 'refund', reminder_days: [], grace_days: 14 },
+        },
+      ],
+      redemptions: { 'mem-1': [{ status: 'available' }, { status: 'available' }] },
+    });
+
+    const res = await GET(req('test-secret'));
+    const body = await res.json();
+
+    // No refund issued, membership left intact (not 'refunded'/'expired'), and the
+    // failure is surfaced — the slot is retried on the next tick.
+    expect(createRefund).not.toHaveBeenCalled();
+    expect(
+      updates.some((u) => u.table === 'subscription_memberships' && u.values.status === 'refunded'),
+    ).toBe(false);
+    expect(body.skipped).toBeGreaterThanOrEqual(1);
+  });
+
   it('pro-rates end-of-term on the ORIGINAL captured base after a prior partial refund (not remaining)', async () => {
     // Order captured 150; a prior partial refund leaves 120 remaining-refundable.
     // 2-of-3 unredeemed must pro-rate on 150 → 100.00, NOT on 120 → 80.00.
