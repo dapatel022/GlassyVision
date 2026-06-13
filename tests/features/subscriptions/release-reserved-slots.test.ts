@@ -13,8 +13,9 @@ function install(o: Opts = {}) {
   from.mockImplementation((t: string) => {
     if (t === 'subscription_redemptions') {
       return {
-        select: () => ({
-          eq: () => ({ eq: () => ({ not: () => Promise.resolve({ data: pending, error: null }) }) }),
+        // releaseReservedSlots atomically claims via .update().eq().eq().not().select()
+        update: () => ({
+          eq: () => ({ eq: () => ({ not: () => ({ select: () => Promise.resolve({ data: pending, error: null }) }) }) }),
         }),
       };
     }

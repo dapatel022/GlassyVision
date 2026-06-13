@@ -23,16 +23,23 @@ export async function releaseReservedSlots(
   supabase: SupabaseClient,
   membershipId: string,
 ): Promise<{ released: number }> {
-  const { data: pending } = await supabase
+  // Atomically CLAIM the pending_payment slots by flipping them to `expired` in a
+  // single conditional UPDATE ... RETURNING. Only the call that actually flips a
+  // row then releases its unit — so two concurrent expiry paths (e.g. the daily
+  // cron and a refunds/create webhook for the same membership) can't both read
+  // the same pending_payment slots and double-release the unit. The callers'
+  // subsequent expire of uncommitted slots is then a no-op for these.
+  const { data: claimed } = await supabase
     .from('subscription_redemptions')
-    .select('id, frame_variant_id')
+    .update({ status: 'expired' })
     .eq('membership_id', membershipId)
     .eq('status', 'pending_payment')
-    .not('frame_variant_id', 'is', null);
+    .not('frame_variant_id', 'is', null)
+    .select('id, frame_variant_id');
 
   let released = 0;
 
-  for (const slot of (pending ?? []) as Array<{ id: string; frame_variant_id: number | null }>) {
+  for (const slot of (claimed ?? []) as Array<{ id: string; frame_variant_id: number | null }>) {
     if (slot.frame_variant_id == null) continue;
 
     // Atomic +1 release + ledger row in one statement (audit C8).

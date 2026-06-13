@@ -60,20 +60,18 @@ function install(o: MemberOpts = {}) {
     }
     if (table === 'subscription_redemptions') {
       return {
-        select: () => ({
-          // status-count read: .select().eq() is thenable; AND
-          // releaseReservedSlots: .select().eq().eq().not() chain.
-          eq: () => {
-            const p = Promise.resolve({ data: redemptions, error: null }) as Promise<unknown> & {
-              eq?: unknown;
-            };
-            p.eq = () => ({ not: () => Promise.resolve({ data: reserved, error: null }) });
-            return p;
-          },
-        }),
+        // status-count read: .select('status').eq('membership_id') is thenable.
+        select: () => ({ eq: () => Promise.resolve({ data: redemptions, error: null }) }),
         update: (values: Record<string, unknown>) => {
           updates.push({ table, values });
-          return { eq: () => ({ in: () => Promise.resolve({ error: null }) }) };
+          return {
+            eq: () => ({
+              // caller expire: .eq('membership_id').in('status', UNCOMMITTED)
+              in: () => Promise.resolve({ error: null }),
+              // releaseReservedSlots atomic claim: .eq().eq().not().select()
+              eq: () => ({ not: () => ({ select: () => Promise.resolve({ data: reserved, error: null }) }) }),
+            }),
+          };
         },
       };
     }
@@ -279,16 +277,13 @@ describe('cancelMembership', () => {
       }
       if (table === 'subscription_redemptions') {
         return {
-          select: () => ({
-            eq: () => {
-              const p = Promise.resolve({ data: [{ status: 'available' }], error: null }) as Promise<unknown> & {
-                eq?: unknown;
-              };
-              p.eq = () => ({ not: () => Promise.resolve({ data: [], error: null }) });
-              return p;
-            },
+          select: () => ({ eq: () => Promise.resolve({ data: [{ status: 'available' }], error: null }) }),
+          update: () => ({
+            eq: () => ({
+              in: () => Promise.resolve({ error: null }),
+              eq: () => ({ not: () => ({ select: () => Promise.resolve({ data: [], error: null }) }) }),
+            }),
           }),
-          update: () => ({ eq: () => ({ in: () => Promise.resolve({ error: null }) }) }),
         };
       }
       if (table === 'audit_log') {

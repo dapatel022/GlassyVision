@@ -74,13 +74,18 @@ function mockSupabase(opts: {
               then: (resolve: (v: unknown) => void) =>
                 resolve({ data: opts.redemptions[id] ?? [], error: null }),
               in: () => Promise.resolve({ error: null }),
-              // releaseReservedSlots read: .eq('status','pending_payment').not(...)
-              eq: () => ({ not: () => Promise.resolve({ data: [], error: null }) }),
             }),
           }),
           update: (values: Record<string, unknown>) => {
             updates.push({ table, values });
-            return { eq: () => ({ in: () => Promise.resolve({ error: null }) }) };
+            return {
+              eq: () => ({
+                // caller expire: .eq('membership_id').in('status', UNCOMMITTED)
+                in: () => Promise.resolve({ error: null }),
+                // releaseReservedSlots atomic claim: .eq().eq().not().select()
+                eq: () => ({ not: () => ({ select: () => Promise.resolve({ data: [], error: null }) }) }),
+              }),
+            };
           },
         };
       }
@@ -490,17 +495,18 @@ describe('membership-expiry cron', () => {
                 // status-count read: one pending_payment slot (no committed slots)
                 then: (resolve: (v: unknown) => void) =>
                   resolve({ data: [{ status: 'pending_payment' }], error: null }),
-                // releaseReservedSlots read: the reserved pending_payment slot
-                eq: () => ({
-                  not: () =>
-                    Promise.resolve({ data: [{ id: 'slot-pp', frame_variant_id: 222 }], error: null }),
-                }),
                 in: () => Promise.resolve({ error: null }),
               }),
             }),
             update: (values: Record<string, unknown>) => {
               updates.push({ table, values });
-              return { eq: () => ({ in: () => Promise.resolve({ error: null }) }) };
+              return {
+                eq: () => ({
+                  in: () => Promise.resolve({ error: null }),
+                  // releaseReservedSlots atomic claim returns the reserved slot.
+                  eq: () => ({ not: () => ({ select: () => Promise.resolve({ data: [{ id: 'slot-pp', frame_variant_id: 222 }], error: null }) }) }),
+                }),
+              };
             },
           };
         }

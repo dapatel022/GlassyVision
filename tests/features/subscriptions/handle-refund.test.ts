@@ -49,18 +49,16 @@ describe('handleRefundWebhook', () => {
       }
       if (table === 'subscription_redemptions') {
         return {
-          select: () => ({
-            eq: () => ({
-              // add-on lookup: .select().eq().maybeSingle()
-              maybeSingle: () => Promise.resolve({ data: null, error: null }),
-              // releaseReservedSlots: .select().eq().eq().not()
-              eq: () => ({ not: () => Promise.resolve({ data: [], error: null }) }),
-            }),
-          }),
+          // add-on lookup: .select().eq().maybeSingle()
+          select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: null }) }) }),
           update: (values: Record<string, unknown>) => {
             updates.push({ table, values });
             return {
-              eq: () => ({ in: () => Promise.resolve({ error: null }) }),
+              eq: () => ({
+                in: () => Promise.resolve({ error: null }),
+                // releaseReservedSlots atomic claim: .eq().eq().not().select()
+                eq: () => ({ not: () => ({ select: () => Promise.resolve({ data: [], error: null }) }) }),
+              }),
             };
           },
         };
@@ -104,17 +102,14 @@ describe('handleRefundWebhook', () => {
       }
       if (table === 'subscription_redemptions') {
         return {
-          select: () => ({
+          select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: null }) }) }),
+          update: () => ({
             eq: () => ({
-              maybeSingle: () => Promise.resolve({ data: null, error: null }),
-              // releaseReservedSlots: one reserved pending_payment slot.
-              eq: () => ({
-                not: () =>
-                  Promise.resolve({ data: [{ id: 'slot-7', frame_variant_id: 444 }], error: null }),
-              }),
+              in: () => Promise.resolve({ error: null }),
+              // releaseReservedSlots atomic claim: one reserved pending_payment slot.
+              eq: () => ({ not: () => ({ select: () => Promise.resolve({ data: [{ id: 'slot-7', frame_variant_id: 444 }], error: null }) }) }),
             }),
           }),
-          update: () => ({ eq: () => ({ in: () => Promise.resolve({ error: null }) }) }),
         };
       }
       if (table === 'inventory_pool') {

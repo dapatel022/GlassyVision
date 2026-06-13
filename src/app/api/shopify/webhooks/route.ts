@@ -160,7 +160,10 @@ export async function POST(request: NextRequest) {
               .update({
                 financial_status: financialStatus,
                 ...(alreadyShipped ? {} : { fulfillment_status: 'unfulfilled' as const }),
-                rx_status: 'none',
+                // Do NOT reset rx_status — it is owned by the review pipeline and
+                // a cancelled order's review history is still a compliance record.
+                // The lab-job deletion below stops in-flight work; the reminder
+                // cron only targets 'awaiting_upload' so it won't re-arm.
                 notes_internal: `Order cancelled in Shopify on ${new Date().toISOString()}`,
                 updated_at: new Date().toISOString(),
               })

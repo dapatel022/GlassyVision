@@ -65,19 +65,18 @@ function install(o: InstallOpts = {}) {
     }
     if (table === 'subscription_redemptions') {
       return {
-        // releaseReservedSlots: .select().eq().eq().not()
-        select: () => ({
-          eq: () => ({ eq: () => ({ not: () => Promise.resolve({ data: reserved, error: null }) }) }),
-        }),
         update: (values: Record<string, unknown>) => {
           const entry: { values: Record<string, unknown>; inFilter?: string[] } = { values };
           slotUpdates.push(entry);
           return {
             eq: () => ({
+              // caller expire: .eq('membership_id').in('status', UNCOMMITTED)
               in: (_col: string, arr: string[]) => {
                 entry.inFilter = arr;
                 return Promise.resolve({ error: null });
               },
+              // releaseReservedSlots atomic claim: .eq().eq().not().select()
+              eq: () => ({ not: () => ({ select: () => Promise.resolve({ data: reserved, error: null }) }) }),
             }),
           };
         },
@@ -161,9 +160,11 @@ describe('expireMembership', () => {
     const res = await expireMembership({ membershipId: 'mem-1' });
     expect(res.success).toBe(true);
 
-    const slot = slotUpdates[0];
-    expect(slot.values.status).toBe('expired');
-    expect(slot.inFilter).toEqual(UNCOMMITTED);
+    // The caller's expire is the slot update carrying the UNCOMMITTED .in() filter
+    // (releaseReservedSlots also issues an expire-claim update, without .in()).
+    const slot = slotUpdates.find((s) => s.inFilter);
+    expect(slot?.values.status).toBe('expired');
+    expect(slot?.inFilter).toEqual(UNCOMMITTED);
 
     const memUpdate = updates.find((u) => u.values.status === 'expired');
     expect(memUpdate).toBeDefined();
