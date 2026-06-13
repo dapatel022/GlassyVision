@@ -34,7 +34,7 @@ interface RedemptionPolicy {
 export async function provisionMembershipFromOrder(
   order: OrderRow,
   supabase: SupabaseClient,
-): Promise<{ provisioned: boolean; membershipId?: string }> {
+): Promise<{ provisioned: boolean; membershipId?: string; conflict?: 'active_membership_exists' }> {
   if (order.financial_status !== 'paid') return { provisioned: false };
   // Synthesized (subscription-source) orders have no Shopify id and can never be
   // a membership purchase — skip (also satisfies the NOT NULL unique key).
@@ -82,7 +82,32 @@ export async function provisionMembershipFromOrder(
 
   if (insertErr) {
     if (insertErr.code === '23505') {
-      // Already provisioned by a prior (concurrent or earlier) delivery.
+      // Two distinct constraints raise 23505 here and they mean opposite things:
+      //  - shopify_order_id unique → a duplicate delivery of the SAME order
+      //    (benign idempotency).
+      //  - idx_one_active_membership_per_customer → a DIFFERENT paid order for a
+      //    customer who already has an active/grace membership. That is NOT
+      //    idempotency: the customer paid again and would get nothing. Surface it
+      //    for an admin (extend term / refund / stack) instead of silently
+      //    swallowing the payment.
+      const detail = `${insertErr.message ?? ''} ${insertErr.details ?? ''}`;
+      if (detail.includes('idx_one_active_membership_per_customer')) {
+        const { error: auditErr } = await supabase.from('audit_log').insert({
+          user_id: null,
+          action: 'membership_provision_conflict',
+          entity_type: 'orders',
+          entity_id: order.id,
+          after_data: {
+            reason: 'customer_already_has_active_membership',
+            shopify_order_id: order.shopify_order_id,
+          },
+        });
+        if (auditErr) {
+          console.error('[provision-membership] conflict audit insert failed', auditErr);
+        }
+        return { provisioned: false, conflict: 'active_membership_exists' };
+      }
+      // shopify_order_id idempotency — already provisioned by a prior delivery.
       return { provisioned: false };
     }
     // Unexpected DB failure — surface so the webhook returns 5xx and Shopify retries.

@@ -102,6 +102,30 @@ describe('provisionMembershipFromOrder', () => {
     expect(slotInsert).not.toHaveBeenCalled();
   });
 
+  it('flags a SECOND membership purchase by an active member instead of swallowing it', async () => {
+    // 23505 from the one-active-membership partial unique index is NOT idempotency:
+    // the customer paid for a distinct order and would otherwise get nothing.
+    const membershipInsert = vi.fn(() => ({ select: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint "idx_one_active_membership_per_customer"' } }) }) }));
+    const auditInsert = vi.fn(() => Promise.resolve({ error: null }));
+    const slotInsert = vi.fn(() => Promise.resolve({ error: null }));
+    from.mockImplementation((t: string) => {
+      if (t === 'order_line_items') return { select: () => ({ eq: () => Promise.resolve({ data: [{ variant_id: 222, product_id: 111 }], error: null }) }) };
+      if (t === 'subscription_plans') return { select: () => ({ eq: () => Promise.resolve({ data: [activePlan], error: null }) }) };
+      if (t === 'subscription_memberships') return { insert: membershipInsert };
+      if (t === 'subscription_redemptions') return { insert: slotInsert };
+      if (t === 'audit_log') return { insert: auditInsert };
+      return table({});
+    });
+    const { provisionMembershipFromOrder } = await import('@/features/subscriptions/provision-membership');
+    const res = await provisionMembershipFromOrder({ id: 'o9', shopify_order_id: 999, customer_id: 'c1', financial_status: 'paid' } as never, supabase as never);
+    expect(res.provisioned).toBe(false);
+    expect(res.conflict).toBe('active_membership_exists');
+    expect(slotInsert).not.toHaveBeenCalled();
+    expect(auditInsert).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'membership_provision_conflict' }),
+    );
+  });
+
   // ---- Task 5.2: lifecycle email sends on provisioning ----
 
   // Build a full happy-path mock where prior comms are absent (nothing sent yet),

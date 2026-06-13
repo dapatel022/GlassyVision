@@ -1,6 +1,33 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createRedemptionFulfillmentOrder } from '@/features/subscriptions/redemption-order';
 
+/** Statuses meaning the redemption already advanced past pending_payment. */
+const ADVANCED_STATUSES = ['awaiting_rx', 'in_review', 'in_production', 'shipped', 'delivered'];
+
+/**
+ * Record a captured add-on payment that could not be turned into fulfillment, so
+ * an admin can refund or manually resolve it. This is invoked when Shopify has
+ * the customer's money (orders/paid fired) but the redemption can't be advanced
+ * — otherwise the payment would silently vanish (no order, no surface).
+ */
+async function flagAddonPayment(
+  supabase: SupabaseClient,
+  redemptionId: string,
+  addonShopifyOrderId: number,
+  reason: string,
+): Promise<void> {
+  const { error } = await supabase.from('audit_log').insert({
+    user_id: null,
+    action: 'addon_payment_unresolved',
+    entity_type: 'subscription_redemptions',
+    entity_id: redemptionId,
+    after_data: { reason, add_on_shopify_order_id: addonShopifyOrderId },
+  });
+  if (error) {
+    console.error('[confirm-addon-payment] flag insert failed', { redemptionId, reason, error });
+  }
+}
+
 /** Line item from the paid add-on order, reduced to what reconciliation needs. */
 export interface PaidLineItem {
   variant_id: number | null | undefined;
@@ -56,6 +83,13 @@ export async function confirmAddonPayment(
 
   if (!redemption) return { advanced: false, reason: 'unknown_redemption' };
   if (redemption.status !== 'pending_payment') {
+    // A replay for an already-advanced slot is a benign no-op. But if the slot
+    // was swept/reverted before this payment landed (e.g. the customer paid
+    // after the pending_payment TTL), the money is captured with no fulfillment
+    // — flag it so an admin can refund or re-redeem (audit black-hole fix).
+    if (!ADVANCED_STATUSES.includes(redemption.status)) {
+      await flagAddonPayment(supabase, redemptionId, addonShopifyOrderId, `slot_${redemption.status}_when_paid`);
+    }
     return { advanced: false, reason: 'not_pending_payment' };
   }
 
@@ -84,6 +118,9 @@ export async function confirmAddonPayment(
         redemptionId,
         requiredId,
       });
+      // Money captured but the paid items don't match the required surcharge —
+      // surface for admin rather than silently dropping the payment.
+      await flagAddonPayment(supabase, redemptionId, addonShopifyOrderId, 'missing_required_variant');
       return { advanced: false, reason: 'missing_required_variant' };
     }
   }
@@ -98,6 +135,8 @@ export async function confirmAddonPayment(
       paidSubtotal: facts.paidSubtotal,
       expected,
     });
+    // Captured an underpayment — flag for admin (refund the difference or void).
+    await flagAddonPayment(supabase, redemptionId, addonShopifyOrderId, 'amount_too_low');
     return { advanced: false, reason: 'amount_too_low' };
   }
 

@@ -7,6 +7,7 @@ vi.mock('@/features/subscriptions/redemption-order', () => ({
 }));
 
 const from = vi.fn();
+const auditInsert = vi.fn(() => Promise.resolve({ error: null }));
 
 interface Opts {
   redemption?: Record<string, unknown> | null;
@@ -44,6 +45,9 @@ function install(o: Opts = {}) {
     if (t === 'subscription_memberships') {
       return { select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: membership, error: null }) }) }) };
     }
+    if (t === 'audit_log') {
+      return { insert: auditInsert };
+    }
     return {};
   });
   return { redemptionUpdate };
@@ -57,6 +61,7 @@ const fullLineItems = [
 
 beforeEach(() => {
   from.mockReset();
+  auditInsert.mockClear();
   createRedemptionFulfillmentOrder.mockReset();
   createRedemptionFulfillmentOrder.mockResolvedValue({ orderId: 'ord-1', lineItemId: 'li-1' });
 });
@@ -121,6 +126,10 @@ describe('confirmAddonPayment', () => {
     expect(res.reason).toBe('amount_too_low');
     expect(createRedemptionFulfillmentOrder).not.toHaveBeenCalled();
     expect(redemptionUpdate).not.toHaveBeenCalled();
+    // Captured money that couldn't be fulfilled is flagged for admin, not dropped.
+    expect(auditInsert).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'addon_payment_unresolved' }),
+    );
   });
 
   it('does NOT advance when a required variant is missing (even if subtotal >= expected)', async () => {
