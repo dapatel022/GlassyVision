@@ -16,6 +16,9 @@ interface LineItem {
 
 interface Props {
   orderDbId: string;
+  publicOrderId: string;
+  token: string;
+  exp: number;
   lineItems: LineItem[];
 }
 
@@ -35,7 +38,7 @@ const RESOLUTIONS: Array<{ value: ReturnResolution; label: string }> = [
   { value: 'store_credit', label: 'Store credit' },
 ];
 
-export default function ReturnRequestForm({ orderDbId, lineItems }: Props) {
+export default function ReturnRequestForm({ orderDbId, publicOrderId, token, exp, lineItems }: Props) {
   const [lineItemId, setLineItemId] = useState(lineItems[0]?.id ?? '');
   const [reason, setReason] = useState<ReturnReason>('damaged');
   const [reasonDetail, setReasonDetail] = useState('');
@@ -54,6 +57,9 @@ export default function ReturnRequestForm({ orderDbId, lineItems }: Props) {
 
     const r = await requestReturn({
       orderId: orderDbId,
+      publicOrderId,
+      token,
+      exp,
       lineItemId,
       requestType: selectedReason.requestType,
       reason,

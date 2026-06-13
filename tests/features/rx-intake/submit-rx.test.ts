@@ -30,9 +30,18 @@ vi.mock('sharp', () => ({
   })),
 }));
 
-function buildOrderSelect(customerEmail = 'alex@example.com') {
+// Token verification is exercised separately; default to valid so the existing
+// business-logic tests keep running, and override per-test for the reject path.
+vi.mock('@/features/rx-intake/lib/rx-token', () => ({
+  verifyRxToken: vi.fn(() => true),
+}));
+
+// Common token args bound to the public order number in storagePath/publicOrderId.
+const TOKEN = { token: 'valid-token', exp: 9999999999999 };
+
+function buildOrderSelect(customerEmail = 'alex@example.com', shopifyOrderNumber = 'GV-1001') {
   const single = vi.fn(() => Promise.resolve({
-    data: { customer_email: customerEmail },
+    data: { customer_email: customerEmail, shopify_order_number: shopifyOrderNumber },
     error: null,
   }));
   const eq = vi.fn(() => ({ single }));
@@ -50,6 +59,8 @@ describe('submitRx', () => {
 
     const result = await submitRx({
       orderId: 'GV-1001',
+      publicOrderId: 'GV-1001',
+      ...TOKEN,
       lineItemId: 'line-1',
       storagePath: 'GV-1001/line-1/test.jpg',
       mimeType: 'image/jpeg',
@@ -67,6 +78,8 @@ describe('submitRx', () => {
 
     const result = await submitRx({
       orderId: 'GV-1001',
+      publicOrderId: 'GV-1001',
+      ...TOKEN,
       lineItemId: 'line-1',
       storagePath: 'GV-1001/line-1/test.jpg',
       mimeType: 'image/jpeg',
@@ -107,6 +120,8 @@ describe('submitRx', () => {
 
     const result = await submitRx({
       orderId: 'GV-1001',
+      publicOrderId: 'GV-1001',
+      ...TOKEN,
       lineItemId: 'line-1',
       storagePath: 'GV-1001/line-1/test.jpg',
       mimeType: 'image/jpeg',
@@ -138,6 +153,8 @@ describe('submitRx', () => {
     const { submitRx } = await import('@/features/rx-intake/actions/submit-rx');
     const result = await submitRx({
       orderId: 'GV-1001',
+      publicOrderId: 'GV-1001',
+      ...TOKEN,
       lineItemId: 'line-1',
       storagePath: 'GV-1001/line-1/test.jpg',
       mimeType: 'image/jpeg',
@@ -170,6 +187,8 @@ describe('submitRx', () => {
 
     const result = await submitRx({
       orderId: 'GV-9999',
+      publicOrderId: 'GV-9999',
+      ...TOKEN,
       lineItemId: 'line-1',
       storagePath: 'GV-9999/line-1/test.jpg',
       mimeType: 'image/jpeg',
@@ -180,5 +199,47 @@ describe('submitRx', () => {
 
     expect(result.success).toBe(false);
     expect(result.errors?.some((e) => e.field === 'order')).toBe(true);
+  });
+
+  it('rejects with an invalid/expired token before touching storage or DB (IDOR guard)', async () => {
+    const { verifyRxToken } = await import('@/features/rx-intake/lib/rx-token');
+    vi.mocked(verifyRxToken).mockReturnValueOnce(false);
+
+    const { submitRx } = await import('@/features/rx-intake/actions/submit-rx');
+    const result = await submitRx({
+      orderId: 'GV-1001',
+      publicOrderId: 'GV-1001',
+      token: 'forged',
+      exp: 9999999999999,
+      lineItemId: 'line-1',
+      storagePath: 'GV-1001/line-1/test.jpg',
+      mimeType: 'image/jpeg',
+      certificationChecked: true,
+      typedValues: null,
+      expirationDate: null,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.errors?.some((e) => e.field === 'auth')).toBe(true);
+    expect(mockFrom).not.toHaveBeenCalled();
+  });
+
+  it('rejects when storagePath is not under the order prefix (cross-order attach)', async () => {
+    const { submitRx } = await import('@/features/rx-intake/actions/submit-rx');
+    const result = await submitRx({
+      orderId: 'GV-1001',
+      publicOrderId: 'GV-1001',
+      ...TOKEN,
+      lineItemId: 'line-1',
+      storagePath: 'GV-2002/line-1/stolen.jpg',
+      mimeType: 'image/jpeg',
+      certificationChecked: true,
+      typedValues: null,
+      expirationDate: null,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.errors?.some((e) => e.field === 'auth')).toBe(true);
+    expect(mockFrom).not.toHaveBeenCalled();
   });
 });

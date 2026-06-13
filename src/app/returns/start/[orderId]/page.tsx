@@ -84,6 +84,9 @@ export default async function StartReturnPage({ params, searchParams }: PageProp
         ) : (
           <ReturnRequestForm
             orderDbId={order.id}
+            publicOrderId={order.shopify_order_number}
+            token={tokenParams!.token}
+            exp={tokenParams!.exp}
             lineItems={(lineItems ?? []).map((li) => ({
               id: li.id,
               productTitle: li.product_title,

@@ -4,10 +4,17 @@ import { headers } from 'next/headers';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createHash } from 'crypto';
 import type { Json } from '@/lib/supabase/types';
+import { verifyRxToken } from '../lib/rx-token';
 import { validateTypedValues, validateImage, type RxTypedValues, type AutoCheckResult } from './auto-checks';
 
 export interface SubmitRxInput {
+  /** Order DB UUID — used to query orders/line items. */
   orderId: string;
+  /** Public order number the Rx token is signed over (binds the request to the link). */
+  publicOrderId: string;
+  /** HMAC Rx token + expiry from the upload link. */
+  token: string;
+  exp: number;
   lineItemId: string;
   storagePath: string;
   mimeType: string;
@@ -16,6 +23,10 @@ export interface SubmitRxInput {
   /** Provenance of the typed values: 'ocr' if auto-read from the image then confirmed. */
   typedValuesSource?: 'manual' | 'ocr';
   expirationDate: string | null;
+}
+
+function authError(message: string): SubmitRxResult {
+  return { success: false, errors: [{ field: 'auth', passed: false, type: 'error', message }] };
 }
 
 export interface SubmitRxResult {
@@ -32,6 +43,21 @@ function extractIp(h: Headers): string {
 }
 
 export async function submitRx(input: SubmitRxInput): Promise<SubmitRxResult> {
+  // Auth: this writes the compliance record and flips rx_status, so it must
+  // re-verify the same HMAC token the page checked — never trust a bare orderId
+  // (which would be an IDOR on the order UUID). The token is signed over the
+  // public order number, so we bind everything to that below.
+  if (!verifyRxToken(input.publicOrderId, input.token, input.exp)) {
+    return authError('Invalid or expired upload link');
+  }
+
+  // Bind the uploaded file to this order: upload-url mints the path as
+  // `${publicOrderId}/${lineItemId}/…` after verifying the token, so a path that
+  // does not start with this order's prefix means a cross-order attach attempt.
+  if (!input.storagePath.startsWith(`${input.publicOrderId}/`)) {
+    return authError('Invalid upload reference');
+  }
+
   const errors: AutoCheckResult[] = [];
   const warnings: AutoCheckResult[] = [];
 
@@ -70,11 +96,12 @@ export async function submitRx(input: SubmitRxInput): Promise<SubmitRxResult> {
 
   const { data: order, error: orderError } = await supabase
     .from('orders')
-    .select('customer_email')
+    .select('customer_email, shopify_order_number')
     .eq('id', input.orderId)
     .single();
 
-  if (orderError || !order) {
+  // The order UUID must resolve to the same order the token was signed over.
+  if (orderError || !order || order.shopify_order_number !== input.publicOrderId) {
     errors.push({
       field: 'order',
       passed: false,

@@ -1,6 +1,7 @@
 'use server';
 
 import { createAdminClient } from '@/lib/supabase/admin';
+import { verifyRxToken } from '@/features/rx-intake/lib/rx-token';
 import type { Database } from '@/lib/supabase/types';
 
 type ReturnRequestType = Database['public']['Enums']['return_request_type'];
@@ -8,7 +9,13 @@ type ReturnReason = Database['public']['Enums']['return_reason'];
 type ReturnResolution = Database['public']['Enums']['return_resolution'];
 
 export interface RequestReturnInput {
+  /** Order DB UUID. */
   orderId: string;
+  /** Public order number the token is signed over (binds the request to the link). */
+  publicOrderId: string;
+  /** HMAC token + expiry from the return link. */
+  token: string;
+  exp: number;
   lineItemId: string;
   requestType: ReturnRequestType;
   reason: ReturnReason;
@@ -28,6 +35,12 @@ function buildRmaNumber(seq: number): string {
 }
 
 export async function requestReturn(input: RequestReturnInput): Promise<RequestReturnResult> {
+  // Auth: re-verify the same HMAC token the page checked. Without this, anyone
+  // with a guessed order UUID could file returns with attacker-controlled photos.
+  if (!verifyRxToken(input.publicOrderId, input.token, input.exp)) {
+    return { success: false, error: 'Invalid or expired link' };
+  }
+
   const supabase = createAdminClient();
 
   const { data: order } = await supabase
@@ -36,7 +49,19 @@ export async function requestReturn(input: RequestReturnInput): Promise<RequestR
     .eq('id', input.orderId)
     .maybeSingle();
 
-  if (!order) return { success: false, error: 'Order not found' };
+  // The order UUID must resolve to the same order the token was signed over.
+  if (!order || order.shopify_order_number !== input.publicOrderId) {
+    return { success: false, error: 'Order not found' };
+  }
+
+  // The line item being returned must belong to this order (no cross-order refs).
+  const { data: lineItem } = await supabase
+    .from('order_line_items')
+    .select('id')
+    .eq('id', input.lineItemId)
+    .eq('order_id', order.id)
+    .maybeSingle();
+  if (!lineItem) return { success: false, error: 'Line item not found on this order' };
 
   const { count } = await supabase
     .from('returns')

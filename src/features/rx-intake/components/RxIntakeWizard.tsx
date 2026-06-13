@@ -88,6 +88,9 @@ export default function RxIntakeWizard({
     for (const lineItemId of lineItemIds) {
       const input: SubmitRxInput = {
         orderId: orderDbId,
+        publicOrderId: orderId,
+        token,
+        exp,
         lineItemId,
         storagePath: currentUpload.storagePath!,
         mimeType: currentUpload.mimeType!,
