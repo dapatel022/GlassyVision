@@ -15,6 +15,10 @@ vi.mock('@/features/admin/actions/generate-work-order', () => ({
   generateWorkOrder: generateWorkOrderMock,
 }));
 
+const sendEmailMock = vi.fn((..._a: unknown[]) => Promise.resolve({ success: true, providerMessageId: 'm1' }));
+vi.mock('@/lib/email/resend', () => ({ sendEmail: (...a: unknown[]) => sendEmailMock(...a) }));
+vi.mock('@/features/rx-intake/lib/rx-token', () => ({ buildRxUrl: () => 'https://x/rx?token=t&exp=1' }));
+
 describe('reviewRx', () => {
   beforeEach(() => {
     mockFrom.mockReset();
@@ -88,7 +92,11 @@ describe('reviewRx', () => {
       if (table === 'rx_files') return { select: rxFileSelect, update: rxFileUpdate };
       if (table === 'rx_reviews') return { insert: reviewInsert };
       if (table === 'audit_log') return { insert: auditInsert };
-      if (table === 'orders') return { update: orderUpdate };
+      if (table === 'orders') return {
+        update: orderUpdate,
+        // rejection-email path reads the order for recipient + order number
+        select: () => ({ eq: () => ({ single: () => Promise.resolve({ data: { customer_email: 'a@x.com', shopify_order_number: 'GV-2' }, error: null }) }) }),
+      };
       return {};
     });
 
@@ -105,6 +113,8 @@ describe('reviewRx', () => {
     expect(rxFileUpdate).toHaveBeenCalledTimes(1);
     const patch = (rxFileUpdate.mock.calls as unknown as Array<[{ deleted_at: string }]>)[0][0];
     expect(patch.deleted_at).toBeTruthy();
+    // The customer is notified of the rejection.
+    expect(sendEmailMock).toHaveBeenCalledWith(expect.objectContaining({ to: 'a@x.com' }));
   });
 
   it('returns error when rx_file is not found', async () => {

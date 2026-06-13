@@ -4,6 +4,9 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { getCurrentUser, isAdminRole } from '@/lib/auth/middleware';
 import type { Database, Json } from '@/lib/supabase/types';
 import { generateWorkOrder } from '@/features/admin/actions/generate-work-order';
+import { buildRxUrl } from '@/features/rx-intake/lib/rx-token';
+import { renderRxRejected } from '@/lib/email/templates/rx-rejected';
+import { sendEmail } from '@/lib/email/resend';
 
 type RxDecision = Database['public']['Enums']['rx_decision'];
 type RxRejectionReason = Database['public']['Enums']['rx_rejection_reason'];
@@ -91,6 +94,31 @@ export async function reviewRx(input: ReviewRxInput): Promise<ReviewRxResult> {
       .eq('id', input.rxFileId);
     if (deleteError) {
       console.error('[review-rx] rx_files soft-delete failed', { rxFileId: input.rxFileId, error: deleteError });
+    }
+
+    // Notify the customer their Rx was rejected, with the reason and a fresh
+    // re-upload link — otherwise a rejected order silently stalls (the reason is
+    // only visible if they happen to revisit the intake link). Best-effort: an
+    // email failure must not fail the review (the rejection is already recorded).
+    try {
+      const { data: order } = await supabase
+        .from('orders')
+        .select('customer_email, shopify_order_number')
+        .eq('id', rxFile.order_id)
+        .single();
+      if (order?.customer_email && order.shopify_order_number) {
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://glassyvision.com';
+        const rendered = renderRxRejected({
+          orderNumber: order.shopify_order_number,
+          customerEmail: order.customer_email,
+          reason: input.decisionReason,
+          notes: input.notes,
+          rxUrl: buildRxUrl(order.shopify_order_number, baseUrl),
+        });
+        await sendEmail({ to: order.customer_email, subject: rendered.subject, html: rendered.html, text: rendered.text });
+      }
+    } catch (e) {
+      console.error('[review-rx] rejection email failed', { rxFileId: input.rxFileId, error: e });
     }
   }
 

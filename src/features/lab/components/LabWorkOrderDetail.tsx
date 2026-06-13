@@ -83,9 +83,13 @@ export default function LabWorkOrderDetail({ workOrder, order, rx, jobId, initia
 
   const odAxis = parseInt(rx.typed_od_axis || '0') || 0;
   const osAxis = parseInt(rx.typed_os_axis || '0') || 0;
-  const pdOffset = parseFloat(rx.typed_pd || '63') || 63;
-  const monocularOd = workOrder.monocular_pd_od || pdOffset / 2;
-  const monocularOs = workOrder.monocular_pd_os || pdOffset / 2;
+  // PD is required to center lenses. If none was supplied, do NOT silently render
+  // a fabricated 63mm/31.5mm as if real — flag it and fall back to a neutral
+  // centered position purely so the guide draws, with a visible warning.
+  const pdMissing = !rx.typed_pd && workOrder.monocular_pd_od == null && workOrder.monocular_pd_os == null;
+  const pdOffset = parseFloat(rx.typed_pd || '') || 63;
+  const monocularOd = workOrder.monocular_pd_od ?? (rx.typed_pd ? pdOffset / 2 : 32);
+  const monocularOs = workOrder.monocular_pd_os ?? (rx.typed_pd ? pdOffset / 2 : 32);
 
   // Active stage index
   const activeIdx = STAGES.findIndex((s) => s.column === column);
@@ -243,6 +247,13 @@ export default function LabWorkOrderDetail({ workOrder, order, rx, jobId, initia
               <h2 className="font-sans font-black text-lg text-ink uppercase tracking-tight">Digital Lens Blocker alignment guide</h2>
               <p className="text-xs text-muted-soft font-serif italic">Use this visual guide to calibrate lens axes and PD offsets on the blocker.</p>
             </div>
+
+            {pdMissing && (
+              <div className="bg-error/10 border border-error/30 rounded-lg p-3 text-sm text-error font-bold">
+                ⚠ No PD on file — the pupil markers below are shown centered as a placeholder only.
+                Confirm the patient&apos;s PD before cutting; do not rely on these positions.
+              </div>
+            )}
 
             <div className="bg-base rounded-2xl p-6 border border-line flex flex-col md:flex-row items-center justify-center gap-12">
               
