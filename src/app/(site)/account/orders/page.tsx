@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { getCurrentCustomer } from '@/lib/auth/customer';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getCustomerOrders } from '@/features/account/orders/get-customer-orders';
+import { buildTrackPath } from '@/features/rx-intake/lib/rx-token';
 
 export const metadata = { title: 'Orders' };
 export const dynamic = 'force-dynamic';
@@ -92,7 +93,7 @@ export default async function OrdersPage() {
                 )}
 
                 <Link
-                  href={`/track/${order.orderNumber}`}
+                  href={buildTrackPath(order.orderNumber)}
                   className="inline-block mt-4 text-xs font-mono text-accent underline"
                 >
                   Track this order →

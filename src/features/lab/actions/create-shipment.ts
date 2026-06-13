@@ -8,6 +8,7 @@ import { isDispensableDestination } from '@/lib/rx/market';
 import { advanceRedemptionForOrder } from '@/features/subscriptions/advance-redemption';
 import { sendEmail } from '@/lib/email/resend';
 import { renderPairShipped } from '@/lib/email/templates/pair-shipped';
+import { buildTrackUrl } from '@/features/rx-intake/lib/rx-token';
 
 export interface CreateShipmentInput {
   jobId: string;
@@ -226,7 +227,19 @@ async function sendPairShippedEmail(
   if (!email) return;
 
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://glassyvision.com';
-  const trackingUrl = ship.trackingUrl ?? `${baseUrl}/track/${internalOrderId}`;
+  // Prefer the carrier's own tracking URL. The fallback is our /track page, which
+  // now requires a token and is keyed on the public order number (not the DB id).
+  let fallbackTrackUrl = `${baseUrl}/account/orders`;
+  if (!ship.trackingUrl) {
+    const { data: orderRow } = await supabase
+      .from('orders')
+      .select('shopify_order_number')
+      .eq('id', internalOrderId)
+      .maybeSingle();
+    const orderNumber = (orderRow as { shopify_order_number?: string | null } | null)?.shopify_order_number;
+    if (orderNumber) fallbackTrackUrl = buildTrackUrl(orderNumber, baseUrl);
+  }
+  const trackingUrl = ship.trackingUrl ?? fallbackTrackUrl;
   const rendered = renderPairShipped({
     trackingUrl,
     carrier: ship.carrier,

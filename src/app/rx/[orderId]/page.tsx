@@ -51,7 +51,7 @@ export default async function RxIntakePage({ params, searchParams }: PageProps) 
   if (!order) {
     return (
       <div className="min-h-screen bg-base flex items-center justify-center px-4">
-        <RxOrderPending orderId={orderId} />
+        <RxOrderPending orderId={orderId} token={tokenParams!.token} exp={tokenParams!.exp} />
       </div>
     );
   }

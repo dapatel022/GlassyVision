@@ -1,9 +1,11 @@
 import { createAdminClient } from '@/lib/supabase/admin';
+import { verifyRxToken, parseRxTokenParams } from '@/features/rx-intake/lib/rx-token';
 
 export const dynamic = 'force-dynamic';
 
 interface PageProps {
   params: Promise<{ orderId: string }>;
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }
 
 const STAGES = [
@@ -14,8 +16,36 @@ const STAGES = [
   { key: 'delivered', label: 'Delivered' },
 ];
 
-export default async function TrackOrderPage({ params }: PageProps) {
+export default async function TrackOrderPage({ params, searchParams }: PageProps) {
   const { orderId } = await params;
+  const search = await searchParams;
+
+  // Require a valid token so order-number enumeration can't reveal any order's
+  // fulfillment/Rx status. The token is only delivered to the order owner (in the
+  // shipping email or via an authenticated account page).
+  const urlParams = new URLSearchParams();
+  if (typeof search.token === 'string') urlParams.set('token', search.token);
+  if (typeof search.exp === 'string') urlParams.set('exp', search.exp);
+  const tokenParams = parseRxTokenParams(urlParams);
+  const isAuthenticated = tokenParams ? verifyRxToken(orderId, tokenParams.token, tokenParams.exp) : false;
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-base flex items-center justify-center px-4">
+        <div className="max-w-md text-center">
+          <h1 className="font-sans text-2xl font-black tracking-tight uppercase text-ink mb-2">
+            Sign in to track your order
+          </h1>
+          <p className="text-muted">
+            Use the tracking link from your shipping email, or{' '}
+            <a href="/account/login" className="text-accent underline">sign in to your account</a>{' '}
+            to see your order status.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const supabase = createAdminClient();
 
   const { data: order } = await supabase

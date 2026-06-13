@@ -61,3 +61,21 @@ export function buildRxUrl(orderId: string, baseUrl: string): string {
   const { token, exp } = generateRxToken(orderId);
   return `${baseUrl}/rx/${orderId}?token=${token}&exp=${exp}`;
 }
+
+/**
+ * Build a tokenized order-tracking link. The token is only ever handed to the
+ * order's rightful owner — embedded in the shipping email or rendered on an
+ * authenticated account page — so `/track` can require it and reject anonymous
+ * order-number enumeration. Longer-lived than the Rx link (orders are tracked
+ * well past the 30-day Rx window).
+ */
+export function buildTrackUrl(orderId: string, baseUrl: string, expiryDays = 90): string {
+  const { token, exp } = generateRxToken(orderId, expiryDays);
+  return `${baseUrl}/track/${orderId}?token=${token}&exp=${exp}`;
+}
+
+/** Relative tracking path (`/track/<id>?token=…`) for in-app links. */
+export function buildTrackPath(orderId: string, expiryDays = 90): string {
+  const { token, exp } = generateRxToken(orderId, expiryDays);
+  return `/track/${orderId}?token=${token}&exp=${exp}`;
+}

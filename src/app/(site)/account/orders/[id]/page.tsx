@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { buildTrackPath } from '@/features/rx-intake/lib/rx-token';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -14,7 +15,7 @@ export default async function OrderDetailPage({ params }: PageProps) {
         <p className="font-serif italic text-muted">
           Order detail view ships with Drop Nº 01.
         </p>
-        <Link href={`/track/${id}`} className="inline-block mt-4 text-accent underline">
+        <Link href={buildTrackPath(id)} className="inline-block mt-4 text-accent underline">
           Track this order →
         </Link>
       </div>

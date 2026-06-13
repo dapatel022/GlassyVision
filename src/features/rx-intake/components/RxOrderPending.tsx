@@ -4,9 +4,11 @@ import { useEffect, useState } from 'react';
 
 interface RxOrderPendingProps {
   orderId: string;
+  token: string;
+  exp: number;
 }
 
-export default function RxOrderPending({ orderId }: RxOrderPendingProps) {
+export default function RxOrderPending({ orderId, token, exp }: RxOrderPendingProps) {
   const [attempts, setAttempts] = useState(0);
   const maxAttempts = 10;
 
@@ -15,7 +17,8 @@ export default function RxOrderPending({ orderId }: RxOrderPendingProps) {
 
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/rx/order-status?orderId=${encodeURIComponent(orderId)}`);
+        const qs = `orderId=${encodeURIComponent(orderId)}&token=${encodeURIComponent(token)}&exp=${exp}`;
+        const res = await fetch(`/api/rx/order-status?${qs}`);
         if (res.ok) {
           const body = await res.json() as { exists?: boolean };
           if (body.exists) {
@@ -30,7 +33,7 @@ export default function RxOrderPending({ orderId }: RxOrderPendingProps) {
     }, 3000);
 
     return () => clearTimeout(timer);
-  }, [attempts, orderId]);
+  }, [attempts, orderId, token, exp]);
 
   if (attempts >= maxAttempts) {
     return (

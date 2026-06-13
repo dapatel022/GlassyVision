@@ -1,6 +1,4 @@
 import Link from 'next/link';
-import { createAdminClient } from '@/lib/supabase/admin';
-import { generateRxToken } from '@/features/rx-intake/lib/rx-token';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,37 +6,13 @@ interface PageProps {
   params: Promise<{ orderId: string }>;
 }
 
+// Reached by the post-checkout redirect, keyed on a guessable order number and
+// with no token to bind it to the buyer. It therefore shows NO order-specific
+// data: no email, and it never mints an Rx-upload token (doing either turned the
+// page into a PII + prescription-access oracle — see 2026-06-12 audit C3). The
+// secure Rx-upload and tracking links are delivered by email to the customer.
 export default async function ThanksPage({ params }: PageProps) {
   const { orderId } = await params;
-  const supabase = createAdminClient();
-
-  const { data: order } = await supabase
-    .from('orders')
-    .select('id, shopify_order_number, customer_email, has_rx_items, customer_id')
-    .eq('shopify_order_number', orderId)
-    .maybeSingle();
-
-  if (!order) {
-    return (
-      <div className="min-h-screen bg-base flex items-center justify-center px-4">
-        <div className="max-w-md text-center">
-          <h1 className="font-sans text-3xl font-black tracking-tight uppercase text-ink mb-3">
-            Thank you!
-          </h1>
-          <p className="text-muted font-serif italic">
-            We&apos;re processing your order now. Check your email in a minute for the order confirmation.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  const rxUrl = order.has_rx_items
-    ? (() => {
-        const { token, exp } = generateRxToken(orderId);
-        return `/rx/${orderId}?token=${token}&exp=${exp}`;
-      })()
-    : null;
 
   return (
     <div className="min-h-screen bg-base flex items-center justify-center px-4">
@@ -49,55 +23,31 @@ export default async function ThanksPage({ params }: PageProps) {
           </svg>
         </div>
         <p className="text-xs font-mono font-bold uppercase tracking-widest text-muted-soft mb-2">
-          Order {order.shopify_order_number}
+          Order {orderId}
         </p>
         <h1 className="font-sans text-4xl font-black tracking-tight uppercase text-ink mb-3">
           Thank you!
         </h1>
+        <p className="text-muted font-serif italic mb-6 leading-relaxed">
+          We&apos;ve emailed your order confirmation. If your order includes prescription
+          lenses, that email also has a secure link to upload your prescription — it only
+          takes a minute, and your glasses ship once we have a valid prescription on file.
+        </p>
+        <p className="text-sm text-muted-soft mb-8">
+          You can track your order any time from your account or the link in your shipping email.
+        </p>
 
-        {rxUrl ? (
-          <>
-            <p className="text-muted font-serif italic mb-6 leading-relaxed">
-              One last step — we need your prescription to make your lenses.
-              This takes about a minute and we&apos;ve also emailed you the link.
-            </p>
-            <Link
-              href={rxUrl}
-              className="inline-block px-8 py-4 bg-accent text-white font-sans font-bold text-sm uppercase tracking-wider rounded-lg hover:bg-accent-light transition-colors"
-            >
-              Upload your prescription
-            </Link>
-            <p className="text-xs text-muted-soft mt-6">
-              We&apos;ve sent a confirmation to <strong>{order.customer_email}</strong>
-            </p>
-          </>
-        ) : (
-          <>
-            <p className="text-muted font-serif italic mb-6 leading-relaxed">
-              Your order is being prepared. We&apos;ll email tracking once it ships.
-            </p>
-            <Link
-              href={`/track/${orderId}`}
-              className="inline-block px-8 py-4 bg-accent text-white font-sans font-bold text-sm uppercase tracking-wider rounded-lg hover:bg-accent-light transition-colors"
-            >
-              Track your order
-            </Link>
-          </>
-        )}
-
-        {order.customer_id && (
-          <div className="mt-10 pt-8 border-t border-line">
-            <p className="text-muted font-serif italic mb-4 leading-relaxed">
-              Create an account to track orders, manage your subscription, and reuse your prescription.
-            </p>
-            <Link
-              href="/account/login"
-              className="inline-block py-3 px-6 bg-ink text-base font-sans font-bold text-xs tracking-widest uppercase"
-            >
-              Create your account
-            </Link>
-          </div>
-        )}
+        <div className="pt-8 border-t border-line">
+          <p className="text-muted font-serif italic mb-4 leading-relaxed">
+            Create an account to track orders, manage your subscription, and reuse your prescription.
+          </p>
+          <Link
+            href="/account/login"
+            className="inline-block py-3 px-6 bg-ink text-base font-sans font-bold text-xs tracking-widest uppercase"
+          >
+            Create your account
+          </Link>
+        </div>
       </div>
     </div>
   );
