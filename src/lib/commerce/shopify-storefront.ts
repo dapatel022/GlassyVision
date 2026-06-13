@@ -151,6 +151,10 @@ export const CART_CREATE_MUTATION = `
           totalTaxAmount { amount currencyCode }
         }
       }
+      userErrors {
+        field
+        message
+      }
     }
   }
 `;

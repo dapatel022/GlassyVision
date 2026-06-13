@@ -225,6 +225,20 @@ export async function POST(request: NextRequest) {
         console.log('Received shop/redact');
         break;
       }
+      case 'customers/data_request': {
+        // Mandatory GDPR topic. We don't auto-export PII; record the request so
+        // an operator can fulfil it within the legal window (the webhook_events
+        // row is the durable trace; surface it via an audit_log entry too).
+        const shopifyCustomerId = (payload as { customer?: { id?: number } }).customer?.id ?? null;
+        await supabase.from('audit_log').insert({
+          user_id: null,
+          action: 'gdpr_data_request',
+          entity_type: 'customers',
+          entity_id: null,
+          after_data: { shopify_customer_id: shopifyCustomerId } as unknown as Json,
+        });
+        break;
+      }
       default:
         console.log(`Unhandled webhook topic: ${topic}`);
     }

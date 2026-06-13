@@ -81,7 +81,8 @@ interface CartCreateResponse {
         subtotalAmount: { amount: string };
         totalTaxAmount?: { amount: string };
       };
-    };
+    } | null;
+    userErrors?: Array<{ field: string[] | null; message: string }>;
   };
 }
 
@@ -310,7 +311,15 @@ export async function createCart(lines: CartLineInput[]): Promise<ShopifyCart> {
     },
   });
 
+  // Surface Shopify's cartCreate userErrors (e.g. a stored variant that is now
+  // unavailable/deleted) instead of dereferencing a null cart and throwing an
+  // opaque TypeError at checkout.
+  const userErrors = data.cartCreate.userErrors ?? [];
   const cart = data.cartCreate.cart;
+  if (!cart) {
+    const reason = userErrors.map((e) => e.message).join('; ') || 'Cart could not be created';
+    throw new Error(`Checkout failed: ${reason}. An item may no longer be available — please remove it and try again.`);
+  }
   return {
     id: cart.id,
     checkoutUrl: cart.checkoutUrl,

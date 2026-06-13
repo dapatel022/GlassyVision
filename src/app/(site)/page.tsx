@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { getProducts } from '@/lib/commerce/shopify';
+import { createAdminClient } from '@/lib/supabase/admin';
 import ProductCard from '@/features/shop/ProductCard';
 import WaitlistForm from '@/features/shop/WaitlistForm';
 import HeroShowcase from '@/features/shop/HeroShowcase';
@@ -13,6 +14,24 @@ export default async function HomePage() {
     products = await getProducts(8);
   } catch {
     // Shopify not yet configured — render placeholder state
+  }
+
+  // Resolve the current drop slug instead of hardcoding 'drop-01' (which 404s
+  // the waitlist CTA if the first drop is seeded under a different slug). Pick the
+  // newest non-ended drop; if none exists, the CTA is simply not shown.
+  let dropSlug: string | null = null;
+  try {
+    const supabase = createAdminClient();
+    const { data: drop } = await supabase
+      .from('drops')
+      .select('slug, state, number')
+      .neq('state', 'closed')
+      .order('number', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    dropSlug = drop?.slug ?? null;
+  } catch {
+    // Supabase not configured — omit the CTA.
   }
 
   return (
@@ -127,16 +146,18 @@ export default async function HomePage() {
         )}
       </section>
 
-      {/* Waitlist CTA */}
-      <section className="max-w-xl mx-auto px-4 sm:px-6 text-center space-y-6">
-        <h2 className="font-sans text-3xl font-black tracking-tight uppercase text-ink">
-          Be first in line
-        </h2>
-        <p className="text-muted font-serif italic leading-relaxed">
-          Drops sell out quickly. Enter your email and optional phone number to secure early access notifications 24 hours prior to the next launch.
-        </p>
-        <WaitlistForm dropSlug="drop-01" />
-      </section>
+      {/* Waitlist CTA — only when there is a current drop to join */}
+      {dropSlug && (
+        <section className="max-w-xl mx-auto px-4 sm:px-6 text-center space-y-6">
+          <h2 className="font-sans text-3xl font-black tracking-tight uppercase text-ink">
+            Be first in line
+          </h2>
+          <p className="text-muted font-serif italic leading-relaxed">
+            Drops sell out quickly. Enter your email and optional phone number to secure early access notifications 24 hours prior to the next launch.
+          </p>
+          <WaitlistForm dropSlug={dropSlug} />
+        </section>
+      )}
     </div>
   );
 }

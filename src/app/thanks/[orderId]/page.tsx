@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import ClearCartOnMount from '@/features/cart/ClearCartOnMount';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,6 +17,7 @@ export default async function ThanksPage({ params }: PageProps) {
 
   return (
     <div className="min-h-screen bg-base flex items-center justify-center px-4">
+      <ClearCartOnMount />
       <div className="max-w-lg text-center">
         <div className="w-16 h-16 bg-success/10 rounded-full flex items-center justify-center mx-auto mb-6">
           <svg className="w-8 h-8 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
