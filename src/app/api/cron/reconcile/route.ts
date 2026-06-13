@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { timingSafeEqual } from 'crypto';
 import { adminFetchPage } from '@/lib/commerce/shopify-admin';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { syncShopifyOrder, type ShopifyOrderPayload } from '@/lib/commerce/sync';
@@ -9,11 +10,22 @@ interface ShopifyOrdersResponse {
   orders: ShopifyOrderPayload[];
 }
 
-export async function GET(request: NextRequest) {
+// Fail CLOSED (unset secret → denied) with a constant-time compare, matching the
+// other crons. The previous `expected && got !== expected` check ran the
+// reconciliation publicly whenever CRON_SECRET was unset.
+function authorize(request: NextRequest): boolean {
   const expected = process.env.CRON_SECRET;
+  if (!expected) return false;
   const got = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '').trim();
+  if (!got) return false;
+  const a = Buffer.from(expected);
+  const b = Buffer.from(got);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
 
-  if (expected && got !== expected) {
+export async function GET(request: NextRequest) {
+  if (!authorize(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

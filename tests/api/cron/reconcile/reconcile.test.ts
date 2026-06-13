@@ -54,6 +54,14 @@ describe('Reconciliation Cron Route Handler', () => {
     expect(res.status).toBe(401);
   });
 
+  it('fails CLOSED when CRON_SECRET is unset (no public reconciliation)', async () => {
+    delete process.env.CRON_SECRET;
+    const { GET } = await import('@/app/api/cron/reconcile/route');
+    const res = await GET(buildRequest('Bearer anything'));
+    expect(res.status).toBe(401);
+    expect(mockAdminFetchPage).not.toHaveBeenCalled();
+  });
+
   it('returns stubbed message when Shopify env vars are missing', async () => {
     delete process.env.SHOPIFY_ADMIN_ACCESS_TOKEN;
     const { GET } = await import('@/app/api/cron/reconcile/route');
