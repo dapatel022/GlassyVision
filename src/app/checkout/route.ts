@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createCart } from '@/lib/commerce/shopify';
+import { lensRequiresRx } from '@/features/shop/lens-options';
 import type { CartLine } from '@/features/cart/types';
 
 export async function POST(request: NextRequest) {
@@ -16,6 +17,10 @@ export async function POST(request: NextRequest) {
         merchandiseId: l.variantId,
         quantity: l.quantity,
         attributes: [
+          // is_rx_required is the authoritative signal the order-sync webhook
+          // reads to flag the order for the Rx pipeline. lens_type/coatings/tint
+          // ride along for the lab job sheet.
+          { key: 'is_rx_required', value: String(lensRequiresRx(l.lensConfig)) },
           { key: 'lens_type', value: l.lensConfig.lensType },
           { key: 'coatings', value: l.lensConfig.coatings.join(',') || 'none' },
           { key: 'tint', value: l.lensConfig.tint },

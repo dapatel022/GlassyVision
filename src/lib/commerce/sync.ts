@@ -200,18 +200,21 @@ export async function syncShopifyOrder(
       let frameColor: string | null = null;
       let frameSize: string | null = null;
 
-      // Scan properties array
+      // Scan properties array. Normalize the property NAME (strip case and any
+      // non-alphanumerics) so 'lens_type', 'lensType', '_lensType' and 'lenstype'
+      // all match — a key-format mismatch here previously silenced the entire Rx
+      // pipeline for storefront orders (2026-06-12 audit C4).
       if (Array.isArray(properties)) {
         for (const prop of properties) {
-          const name = String(prop.name).toLowerCase();
+          const name = String(prop.name).toLowerCase().replace(/[^a-z0-9]/g, '');
           const value = String(prop.value).toLowerCase();
 
-          if (name === 'lenstype' || name === '_lenstype') {
+          if (name === 'lenstype') {
             if (value === 'single_vision' || value === 'progressive') {
               isRxRequired = true;
             }
           }
-          if (name === 'is_rx_required') {
+          if (name === 'isrxrequired') {
             if (value === 'true' || value === 'yes' || value === '1') {
               isRxRequired = true;
             }
@@ -219,7 +222,7 @@ export async function syncShopifyOrder(
           if (name === 'frameshape') frameShape = prop.value;
           if (name === 'framecolor') frameColor = prop.value;
           if (name === 'framesize') frameSize = prop.value;
-          if (name === 'redemption_id' || name === '_redemption_id') redemptionId = prop.value;
+          if (name === 'redemptionid') redemptionId = prop.value;
         }
       }
 
@@ -294,9 +297,18 @@ export async function syncShopifyOrder(
 
     if (existingOrder) {
       orderUuid = existingOrder.id;
+      // rx_status is owned by the review pipeline (uploaded_pending_review /
+      // approved / rejected), NOT derivable from the Shopify payload. A naive
+      // full-row update here regressed it back to 'awaiting_upload' on every
+      // orders/updated webhook and reconcile pass, corrupting the Rx queue and
+      // re-arming reminders (2026-06-12 audit C6). Preserve the DB value, and
+      // never overwrite the original created_at.
+      const { rx_status: _rxStatus, created_at: _createdAt, ...updatePatch } = orderObj;
+      void _rxStatus;
+      void _createdAt;
       const { error: updateErr } = await supabase
         .from('orders')
-        .update(orderObj)
+        .update(updatePatch)
         .eq('id', orderUuid);
 
       if (updateErr) {
