@@ -9,6 +9,7 @@ import { advanceRedemptionForOrder } from '@/features/subscriptions/advance-rede
 import { sendEmail } from '@/lib/email/resend';
 import { renderPairShipped } from '@/lib/email/templates/pair-shipped';
 import { buildTrackUrl } from '@/features/rx-intake/lib/rx-token';
+import type { Json } from '@/lib/supabase/types';
 
 export interface CreateShipmentInput {
   jobId: string;
@@ -170,7 +171,22 @@ export async function createShipment(input: CreateShipmentInput): Promise<{ succ
         await createFulfillment(orderRow.shopify_order_id, input.trackingNumber, input.carrier, [lineItem.shopify_line_item_id]);
       }
     } catch (e) {
+      // The local shipment is recorded, but Shopify wasn't told — so the customer
+      // won't get Shopify's tracking email and the order shows unfulfilled. Make
+      // this VISIBLE (not just a console line) so an operator can re-push, since
+      // the reconcile cron only syncs Shopify→Supabase and won't retry this.
+      const message = e instanceof Error ? e.message : 'unknown';
       console.error('[create-shipment] Shopify fulfillment push failed (local shipment already recorded)', e);
+      const { error: auditErr } = await supabase.from('audit_log').insert({
+        user_id: user.id,
+        action: 'shopify_fulfillment_push_failed',
+        entity_type: 'work_orders',
+        entity_id: job.work_order_id,
+        after_data: { tracking_number: input.trackingNumber, carrier: input.carrier, error: message } as unknown as Json,
+      });
+      if (auditErr) {
+        console.error('[create-shipment] failure-audit insert also failed', auditErr);
+      }
     }
   }
 

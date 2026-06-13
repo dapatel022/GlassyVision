@@ -52,19 +52,65 @@ export async function updateInventoryLevel(
   });
 }
 
+interface FulfillmentOrderLineItem {
+  id: number;
+  line_item_id: number;
+  quantity: number;
+}
+interface FulfillmentOrder {
+  id: number;
+  status: string;
+  line_items: FulfillmentOrderLineItem[];
+}
+interface FulfillmentOrdersResponse {
+  fulfillment_orders: FulfillmentOrder[];
+}
+
+/**
+ * Create a Shopify fulfillment with tracking, scoped to the given order line
+ * item ids (empty = the whole order).
+ *
+ * Uses the fulfillment-orders flow: the legacy order-scoped endpoint
+ * `POST /orders/{id}/fulfillments.json` was REMOVED in Admin API 2023-04, so on
+ * any modern version it 404s and the customer never gets a tracking email. We
+ * first resolve the order's open fulfillment orders, then create a fulfillment
+ * referencing only the matching fulfillment-order line items. `notify_customer`
+ * triggers Shopify's shipment notification.
+ */
 export async function createFulfillment(
   orderId: number,
   trackingNumber: string,
   trackingCompany: string,
   lineItemIds: number[],
 ) {
-  return adminFetch(`orders/${orderId}/fulfillments.json`, {
+  const { fulfillment_orders: fulfillmentOrders } = await adminFetch<FulfillmentOrdersResponse>(
+    `orders/${orderId}/fulfillment_orders.json`,
+  );
+
+  const target = lineItemIds.length > 0 ? new Set(lineItemIds) : null;
+  const OPEN_STATUSES = new Set(['open', 'in_progress', 'scheduled']);
+
+  const lineItemsByFulfillmentOrder = (fulfillmentOrders ?? [])
+    .filter((fo) => OPEN_STATUSES.has(fo.status))
+    .map((fo) => ({
+      fulfillment_order_id: fo.id,
+      fulfillment_order_line_items: (fo.line_items ?? [])
+        .filter((li) => (target ? target.has(li.line_item_id) : true))
+        .map((li) => ({ id: li.id, quantity: li.quantity })),
+    }))
+    .filter((entry) => entry.fulfillment_order_line_items.length > 0);
+
+  if (lineItemsByFulfillmentOrder.length === 0) {
+    throw new Error(`No fulfillable line items found for order ${orderId}`);
+  }
+
+  return adminFetch('fulfillments.json', {
     method: 'POST',
     body: {
       fulfillment: {
-        tracking_number: trackingNumber,
-        tracking_company: trackingCompany,
-        line_items: lineItemIds.map((id) => ({ id })),
+        line_items_by_fulfillment_order: lineItemsByFulfillmentOrder,
+        tracking_info: { number: trackingNumber, company: trackingCompany },
+        notify_customer: true,
       },
     },
   });

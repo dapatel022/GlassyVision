@@ -58,6 +58,12 @@ function installClient(o: ClientOverrides = {}) {
         };
       case 'shipments':
         return { insert: shipmentInsert };
+      case 'order_line_items':
+        // Fulfillment push reads the Shopify line item id; orders carries no
+        // shopify_order_id here, so createFulfillment is skipped either way.
+        return { select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: { shopify_line_item_id: 111 }, error: null }) }) }) };
+      case 'audit_log':
+        return { insert: () => Promise.resolve({ error: null }) };
       case 'subscription_redemptions':
         // status mirroring (Task 7) — no-op for these normal-order tests.
         return { update: () => ({ eq: () => ({ select: () => Promise.resolve({ data: [], error: null }) }) }) };

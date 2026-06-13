@@ -38,11 +38,15 @@ function installCompliantClient() {
         return { insert: () => ({ select: () => ({ single: () => Promise.resolve({ data: { id: 's-1' }, error: null }) }) }) };
       case 'subscription_redemptions':
         return { update: () => ({ eq: () => ({ select: () => Promise.resolve({ data: [], error: null }) }) }) };
+      case 'audit_log':
+        return { insert: auditInsert };
       default:
         return {};
     }
   });
 }
+
+const auditInsert = vi.fn(() => Promise.resolve({ error: null }));
 
 const ORIG_DOMAIN = process.env.SHOPIFY_STORE_DOMAIN;
 const ORIG_TOKEN = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN;
@@ -50,6 +54,7 @@ const ORIG_TOKEN = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN;
 beforeEach(() => {
   mockFrom.mockReset();
   createFulfillment.mockClear();
+  auditInsert.mockClear();
 });
 afterEach(() => {
   process.env.SHOPIFY_STORE_DOMAIN = ORIG_DOMAIN;
@@ -91,5 +96,10 @@ describe('createShipment — Shopify fulfillment push', () => {
     const result = await createShipment({ jobId: 'job-1', carrier: 'DHL', trackingNumber: 'TRK' });
 
     expect(result.success).toBe(true);
+    // The push failure is surfaced (not silent) via an audit_log row so an
+    // operator can re-push — the customer otherwise never gets a tracking email.
+    expect(auditInsert).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'shopify_fulfillment_push_failed' }),
+    );
   });
 });
