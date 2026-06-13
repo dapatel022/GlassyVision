@@ -34,8 +34,7 @@ function buildClient(existingOrder: { id: string; rx_status: string } | null): {
         };
       case 'order_line_items':
         return {
-          delete: () => ({ eq: () => Promise.resolve({ error: null }) }),
-          insert: () => Promise.resolve({ error: null }),
+          upsert: () => Promise.resolve({ error: null }),
         };
       case 'communications':
         // existingComm check (.eq.eq.maybeSingle) → none; then insert → null so

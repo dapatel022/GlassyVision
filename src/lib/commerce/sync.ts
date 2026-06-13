@@ -328,16 +328,18 @@ export async function syncShopifyOrder(
       orderUuid = inserted.id;
     }
 
-    // 7. Sync Line Items (refresh them)
-    const { error: deleteErr } = await supabase
-      .from('order_line_items')
-      .delete()
-      .eq('order_id', orderUuid);
-
-    if (deleteErr) {
-      console.error('[sync] Failed to delete existing line items', deleteErr);
-    }
-
+    // 7. Sync Line Items by UPSERT on the stable shopify_line_item_id.
+    //
+    // The previous delete-all-then-reinsert churned the row UUIDs on every
+    // webhook and, once any row was referenced (work_orders.line_item_id,
+    // rx_files.line_item_id, returns.line_item_id,
+    // subscription_redemptions.internal_line_item_id — none cascade), the delete
+    // failed with an FK violation that was only logged, and the insert then
+    // DUPLICATED the order's line items on every subsequent orders/updated.
+    // Upserting on the unique shopify_line_item_id preserves the row id, so
+    // references stay valid and there is no duplication. (A line item removed
+    // from the order via a Shopify edit is left in place — rare, and far safer
+    // than breaking a referencing FK.)
     if (lineItemsToInsert.length > 0) {
       const lineItemsWithOrder = lineItemsToInsert.map((item) => ({
         ...item,
@@ -346,10 +348,10 @@ export async function syncShopifyOrder(
 
       const { error: itemsErr } = await supabase
         .from('order_line_items')
-        .insert(lineItemsWithOrder);
+        .upsert(lineItemsWithOrder, { onConflict: 'shopify_line_item_id' });
 
       if (itemsErr) {
-        return { success: false, error: `Failed to insert line items: ${itemsErr.message}` };
+        return { success: false, error: `Failed to upsert line items: ${itemsErr.message}` };
       }
     }
 
