@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import type { ShopifyProduct } from '@/lib/commerce/types';
 import type { LensConfig, LensType } from '@/features/cart/types';
-import { lensDelta } from './lens-options';
 import VariantPicker from './VariantPicker';
 import AddToCartButton from './AddToCartButton';
 import VirtualTryOn from './VirtualTryOn';
@@ -33,8 +32,12 @@ export default function PdpConfigurator({ product }: PdpConfiguratorProps) {
 
   const variant = product.variants.find((v) => v.id === variantId) || product.variants[0];
   const framePrice = Number(variant?.price ?? product.price);
-  const lensAdd = lensDelta(lensConfig);
-  const totalPrice = framePrice + lensAdd;
+  // The cart charges the Shopify frame-variant price only. Lens upgrades are not
+  // yet represented as Shopify products, so we MUST NOT add (or display) deltas
+  // the checkout will never collect — doing so showed the customer a higher price
+  // than Shopify charged (2026-06-12 audit C5). Re-introduce per-upgrade pricing
+  // once lens add-on products exist in Shopify and are added as cart line items.
+  const totalPrice = framePrice;
 
   // Handle category change and map to LensConfig
   function handleCategoryChange(cat: LensCategory) {
@@ -249,7 +252,6 @@ export default function PdpConfigurator({ product }: PdpConfiguratorProps) {
                     }`}
                   >
                     <p className="text-xs text-ink uppercase">Single Vision</p>
-                    <p className="text-[10px] text-muted-soft mt-0.5">+$50</p>
                   </button>
                   <button
                     onClick={() => handleLensTypeChange('progressive')}
@@ -258,7 +260,6 @@ export default function PdpConfigurator({ product }: PdpConfiguratorProps) {
                     }`}
                   >
                     <p className="text-xs text-ink uppercase">Progressive</p>
-                    <p className="text-[10px] text-muted-soft mt-0.5">+$150</p>
                   </button>
                 </div>
               </div>
@@ -294,7 +295,6 @@ export default function PdpConfigurator({ product }: PdpConfiguratorProps) {
                     }`}
                   >
                     <span className="text-xs text-ink uppercase">Anti-Reflective</span>
-                    <span className="text-[10px] text-muted-soft font-mono">+$30</span>
                   </button>
                   <button
                     onClick={() => toggleCoating('photochromic')}
@@ -303,7 +303,6 @@ export default function PdpConfigurator({ product }: PdpConfiguratorProps) {
                     }`}
                   >
                     <span className="text-xs text-ink uppercase">Transitions</span>
-                    <span className="text-[10px] text-muted-soft font-mono">+$85</span>
                   </button>
                 </div>
               </div>
