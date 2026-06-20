@@ -6,6 +6,7 @@ import type { Database, Json } from '@/lib/supabase/types';
 import { isRxExpired } from '@/lib/rx/expiration';
 import { isDispensableDestination } from '@/lib/rx/market';
 import { advanceRedemptionForOrder } from '@/features/subscriptions/advance-redemption';
+import { buildWorkOrderNumber } from '@/features/admin/lib/work-order-number';
 
 type LensType = Database['public']['Enums']['lens_type'];
 type LensMaterial = Database['public']['Enums']['lens_material'];
@@ -21,12 +22,6 @@ function splitPd(pdString: string | null, pdType: string | null): { od: number |
   if (pdType === 'mono') return { od: pd, os: pd };
   const half = pd / 2;
   return { od: half, os: half };
-}
-
-function buildWorkOrderNumber(sequence: number): string {
-  const now = new Date();
-  const yyyymm = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
-  return `WO-${yyyymm}-${String(sequence).padStart(3, '0')}`;
 }
 
 export async function generateWorkOrder(rxFileId: string): Promise<GenerateWorkOrderResult> {
