@@ -46,7 +46,9 @@ function installClient(o: ClientOverrides = {}) {
           update: jobUpdate,
         };
       case 'work_orders':
-        return { select: () => ({ eq: () => ({ single: () => Promise.resolve({ data: wo, error: null }) }) }) };
+        // These fixtures are all Rx work orders; default requires_rx=true unless
+        // an override sets it (the createShipment gate branches on this flag).
+        return { select: () => ({ eq: () => ({ single: () => Promise.resolve({ data: { requires_rx: true, ...(wo as Record<string, unknown>) }, error: null }) }) }) };
       case 'rx_files':
         return { select: () => ({ eq: () => ({ single: () => Promise.resolve({ data: rxFile, error: null }) }) }) };
       case 'rx_reviews':

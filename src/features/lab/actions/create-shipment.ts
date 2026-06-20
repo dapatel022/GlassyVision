@@ -49,41 +49,46 @@ export async function createShipment(input: CreateShipmentInput): Promise<{ succ
 
   const { data: wo } = await supabase
     .from('work_orders')
-    .select('order_id, line_item_id, rx_file_id, released_to_lab_at')
+    .select('order_id, line_item_id, rx_file_id, requires_rx, released_to_lab_at')
     .eq('id', job.work_order_id)
     .single();
   if (!wo) return { success: false, error: 'Work order not found' };
 
   // --- Compliance gate -------------------------------------------------
-  if (!wo.rx_file_id) {
-    return { success: false, error: 'Cannot ship: no Rx file on record for this work order' };
-  }
+  // Rx items must clear the full prescription gate. Non-Rx items (plain
+  // sunglasses / plano) have no prescription, so these Rx-specific checks are
+  // skipped — but the release / QC / destination gates below ALWAYS apply.
+  if (wo.requires_rx) {
+    if (!wo.rx_file_id) {
+      return { success: false, error: 'Cannot ship: no Rx file on record for this work order' };
+    }
 
-  const { data: rxFile } = await supabase
-    .from('rx_files')
-    .select('id, storage_path, deleted_at, rx_expiration_date')
-    .eq('id', wo.rx_file_id)
-    .single();
-  if (!rxFile || !rxFile.storage_path || rxFile.deleted_at) {
-    return { success: false, error: 'Cannot ship: Rx image is missing or has been removed' };
-  }
+    const { data: rxFile } = await supabase
+      .from('rx_files')
+      .select('id, storage_path, deleted_at, rx_expiration_date')
+      .eq('id', wo.rx_file_id)
+      .single();
+    if (!rxFile || !rxFile.storage_path || rxFile.deleted_at) {
+      return { success: false, error: 'Cannot ship: Rx image is missing or has been removed' };
+    }
 
-  // FTC Eyeglass Rule: a valid, UNEXPIRED Rx must be on file at dispense.
-  // Expiration is also checked at intake, but a prescription can lapse in the
-  // weeks/months between upload and shipment (acute for subscription pairs
-  // redeemed late in the term) — re-check here so a stale Rx never ships.
-  if (isRxExpired(rxFile.rx_expiration_date)) {
-    return { success: false, error: 'Cannot ship: the prescription on file has expired' };
-  }
+    // FTC Eyeglass Rule: a valid, UNEXPIRED Rx must be on file at dispense.
+    // Expiration is also checked at intake, but a prescription can lapse in the
+    // weeks/months between upload and shipment (acute for subscription pairs
+    // redeemed late in the term) — re-check here so a stale Rx never ships.
+    if (isRxExpired(rxFile.rx_expiration_date)) {
+      return { success: false, error: 'Cannot ship: the prescription on file has expired' };
+    }
 
-  const { data: reviews } = await supabase
-    .from('rx_reviews')
-    .select('decision')
-    .eq('rx_file_id', wo.rx_file_id)
-    .order('reviewed_at', { ascending: false });
-  const latestReview = (reviews ?? [])[0];
-  if (!latestReview || latestReview.decision !== 'approved') {
-    return { success: false, error: 'Cannot ship: Rx has not been approved by an admin' };
+    const { data: reviews } = await supabase
+      .from('rx_reviews')
+      .select('decision')
+      .eq('rx_file_id', wo.rx_file_id)
+      .order('reviewed_at', { ascending: false });
+    const latestReview = (reviews ?? [])[0];
+    if (!latestReview || latestReview.decision !== 'approved') {
+      return { success: false, error: 'Cannot ship: Rx has not been approved by an admin' };
+    }
   }
 
   if (!wo.released_to_lab_at) {

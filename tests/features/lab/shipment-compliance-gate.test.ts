@@ -17,21 +17,31 @@ interface ClientOpts {
   rxExpirationDate?: string | null;
   shippingAddress?: { country_code?: string } | null;
   billingCountry?: string | null;
+  requiresRx?: boolean;
+  rxFileId?: string | null;
+  qcPhotos?: string[];
 }
 
 // A fully compliant client, with the Rx expiration and ship-to destination
 // parameterized so each test can exercise one gate in isolation.
 function installClient(opts: ClientOpts = {}) {
-  const { rxExpirationDate = null, shippingAddress = { country_code: 'US' }, billingCountry = 'us' } = opts;
+  const {
+    rxExpirationDate = null,
+    shippingAddress = { country_code: 'US' },
+    billingCountry = 'us',
+    requiresRx = true,
+    rxFileId = 'rx-1',
+    qcPhotos = ['qc/1.jpg'],
+  } = opts;
   mockFrom.mockImplementation((table: string) => {
     switch (table) {
       case 'lab_jobs':
         return {
-          select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: { id: 'job-1', work_order_id: 'wo-1', qc_photos: ['qc/1.jpg'] }, error: null }) }) }),
+          select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: { id: 'job-1', work_order_id: 'wo-1', qc_photos: qcPhotos }, error: null }) }) }),
           update: () => ({ eq: () => Promise.resolve({ error: null }) }),
         };
       case 'work_orders':
-        return { select: () => ({ eq: () => ({ single: () => Promise.resolve({ data: { order_id: 'o-1', line_item_id: 'li-1', rx_file_id: 'rx-1', released_to_lab_at: '2026-05-01T00:00:00Z' }, error: null }) }) }) };
+        return { select: () => ({ eq: () => ({ single: () => Promise.resolve({ data: { order_id: 'o-1', line_item_id: 'li-1', rx_file_id: rxFileId, requires_rx: requiresRx, released_to_lab_at: '2026-05-01T00:00:00Z' }, error: null }) }) }) };
       case 'rx_files':
         return { select: () => ({ eq: () => ({ single: () => Promise.resolve({ data: { id: 'rx-1', storage_path: 'p', deleted_at: null, rx_expiration_date: rxExpirationDate }, error: null }) }) }) };
       case 'rx_reviews':
@@ -105,5 +115,30 @@ describe('createShipment — destination market gate', () => {
     const { createShipment } = await import('@/features/lab/actions/create-shipment');
     const result = await createShipment({ jobId: 'job-1', carrier: 'DHL', trackingNumber: 'TRK' });
     expect(result.success).toBe(true);
+  });
+});
+
+describe('createShipment — non-Rx items', () => {
+  it('ships a non-Rx job with QC + release + US destination (no Rx file needed)', async () => {
+    installClient({ requiresRx: false, rxFileId: null });
+    const { createShipment } = await import('@/features/lab/actions/create-shipment');
+    const result = await createShipment({ jobId: 'job-1', carrier: 'DHL', trackingNumber: 'TRK' });
+    expect(result.success).toBe(true);
+  });
+
+  it('still blocks a non-Rx job that has no QC photo', async () => {
+    installClient({ requiresRx: false, rxFileId: null, qcPhotos: [] });
+    const { createShipment } = await import('@/features/lab/actions/create-shipment');
+    const result = await createShipment({ jobId: 'job-1', carrier: 'DHL', trackingNumber: 'TRK' });
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/QC/i);
+  });
+
+  it('still blocks a non-Rx job shipping to a non-US/CA destination', async () => {
+    installClient({ requiresRx: false, rxFileId: null, shippingAddress: { country_code: 'GB' } });
+    const { createShipment } = await import('@/features/lab/actions/create-shipment');
+    const result = await createShipment({ jobId: 'job-1', carrier: 'DHL', trackingNumber: 'TRK' });
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/US\/CA|dispens|restrict/i);
   });
 });
