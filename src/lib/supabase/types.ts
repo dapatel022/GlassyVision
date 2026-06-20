@@ -391,7 +391,8 @@ export type Database = {
           id: string;
           order_id: string;
           line_item_id: string;
-          rx_file_id: string;
+          rx_file_id: string | null;
+          requires_rx: boolean;
           work_order_number: string;
           frame_sku: string;
           frame_shape: string | null;
@@ -423,7 +424,8 @@ export type Database = {
           id?: string;
           order_id: string;
           line_item_id: string;
-          rx_file_id: string;
+          rx_file_id?: string | null;
+          requires_rx?: boolean;
           work_order_number: string;
           frame_sku: string;
           frame_shape?: string | null;
@@ -455,7 +457,8 @@ export type Database = {
           id?: string;
           order_id?: string;
           line_item_id?: string;
-          rx_file_id?: string;
+          rx_file_id?: string | null;
+          requires_rx?: boolean;
           work_order_number?: string;
           frame_sku?: string;
           frame_shape?: string | null;
