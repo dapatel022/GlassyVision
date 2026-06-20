@@ -28,7 +28,8 @@ export async function sweepAbandonedRedemptions(
   for (const slot of (stale ?? []) as Array<{ id: string; frame_variant_id: number | null }>) {
     // Reset the slot ONLY if it is still pending_payment. The status guard in the
     // WHERE clause closes the race with confirmAddonPayment: if a payment
-    // confirmation advanced the slot to awaiting_rx between the read above and
+    // confirmation advanced the slot to a committed status (awaiting_rx for Rx
+    // pairs, awaiting_fulfillment for non-Rx pairs) between the read above and
     // this write, the update matches zero rows and we must NOT release stock
     // (the slot is now a live, committed order). Releasing unconditionally
     // produced a phantom unit + a re-redeemable slot (audit sweep↔confirm race).

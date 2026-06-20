@@ -1,5 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getCurrentUser } from '@/lib/auth/middleware';
+import { getCurrentUser, isAdminRole } from '@/lib/auth/middleware';
 import { redirect } from 'next/navigation';
 import { getNonRxQueueItems } from '@/features/admin/lib/non-rx-queue';
 import NonRxQueueClient from './client';
@@ -9,6 +9,9 @@ export const dynamic = 'force-dynamic';
 export default async function NonRxQueuePage() {
   const user = await getCurrentUser();
   if (!user) redirect('/login?redirect=/admin/non-rx-queue');
+  // Defense-in-depth: the admin layout already gates role, but re-check here as
+  // every other admin page does (memberships/plans/inventory).
+  if (!isAdminRole(user.role)) redirect('/unauthorized');
 
   const supabase = createAdminClient();
   const items = await getNonRxQueueItems(supabase);

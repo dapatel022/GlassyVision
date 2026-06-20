@@ -15,9 +15,10 @@ export interface RefundWebhookResult {
 
 /**
  * Redemption statuses that are NOT yet committed to fulfillment. A membership
- * refund expires exactly these; anything past `awaiting_rx` is committed and
- * runs to completion (overview §86 — a refund never claws back a pair that is
- * already being made/shipped).
+ * refund expires exactly these; committed is defined by EXCLUSION — any status
+ * not in this list (awaiting_rx, awaiting_fulfillment, in_review, in_production,
+ * shipped, …) is committed and runs to completion (overview §86 — a refund never
+ * claws back a pair that is already being made/shipped).
  */
 const UNCOMMITTED_STATUSES = ['available', 'locked', 'pending_payment'] as const;
 
