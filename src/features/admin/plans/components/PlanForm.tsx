@@ -147,6 +147,9 @@ export default function PlanForm({ existing, termsLocked = false }: Props) {
           <input type="number" value={form.shopifyVariantId} onChange={(e) => setForm({ ...form, shopifyVariantId: Number(e.target.value) })} className={`${inputCls} font-mono`} />
         </div>
       </div>
+      <p className="text-xs text-muted-soft leading-relaxed">
+        These link the plan to its Shopify <strong>membership product</strong> — the single SKU a customer buys to <em>start</em> the subscription. Leave both at <code>0</code> in local dev (no Shopify connected). A plan does <strong>not</strong> bundle specific frames; the member picks which frames to redeem later from the live catalog.
+      </p>
 
       {error && <p className="text-sm text-error">{error}</p>}
 

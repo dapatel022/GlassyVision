@@ -74,7 +74,10 @@ export default async function MembershipsAdminPage({ searchParams }: PageProps) 
       </div>
 
       {(memberships ?? []).length === 0 ? (
-        <p className="text-muted font-serif italic">No memberships match.</p>
+        <div className="space-y-1">
+          <p className="text-muted font-serif italic">No memberships match.</p>
+          <p className="text-xs text-muted-soft">Memberships aren&apos;t created here — they&apos;re provisioned automatically when a customer buys a plan&apos;s membership product (Shopify <code>orders/paid</code> webhook).</p>
+        </div>
       ) : (
         <div className="space-y-2">
           {(memberships ?? []).map((m) => (
