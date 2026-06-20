@@ -63,7 +63,7 @@ beforeEach(() => {
   from.mockReset();
   auditInsert.mockClear();
   createRedemptionFulfillmentOrder.mockReset();
-  createRedemptionFulfillmentOrder.mockResolvedValue({ orderId: 'ord-1', lineItemId: 'li-1' });
+  createRedemptionFulfillmentOrder.mockResolvedValue({ orderId: 'ord-1', lineItemId: 'li-1', hasRxItems: true });
 });
 
 describe('confirmAddonPayment', () => {
@@ -84,6 +84,22 @@ describe('confirmAddonPayment', () => {
         internal_order_id: 'ord-1',
         add_on_shopify_order_id: 7777,
       }),
+    );
+  });
+
+  it('advances a paid NON-Rx surcharge pair to awaiting_fulfillment (not awaiting_rx)', async () => {
+    createRedemptionFulfillmentOrder.mockResolvedValue({ orderId: 'ord-9', lineItemId: 'li-9', hasRxItems: false });
+    const { redemptionUpdate } = install();
+    const { confirmAddonPayment } = await import('@/features/subscriptions/confirm-addon-payment');
+    const res = await confirmAddonPayment(
+      'slot-1',
+      { paidSubtotal: 40, lineItems: fullLineItems },
+      7777,
+      { from } as never,
+    );
+    expect(res.advanced).toBe(true);
+    expect(redemptionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'awaiting_fulfillment', internal_order_id: 'ord-9', add_on_shopify_order_id: 7777 }),
     );
   });
 
@@ -219,5 +235,24 @@ describe('confirmAddonPayment', () => {
     expect(res.advanced).toBe(false);
     expect(res.reason).toBe('not_pending_payment');
     expect(createRedemptionFulfillmentOrder).not.toHaveBeenCalled();
+  });
+
+  it('treats an already-advanced awaiting_fulfillment replay as a benign no-op (not an unresolved payment)', async () => {
+    install({
+      redemption: {
+        id: 'slot-1',
+        status: 'awaiting_fulfillment',
+        membership_id: 'mem-1',
+        expected_surcharge: 40,
+        lens_config: { addon_variant_ids: [9001, 8001] },
+      },
+    });
+    const { confirmAddonPayment } = await import('@/features/subscriptions/confirm-addon-payment');
+    const res = await confirmAddonPayment('slot-1', { paidSubtotal: 999, lineItems: fullLineItems }, 7777, { from } as never);
+    expect(res.advanced).toBe(false);
+    expect(res.reason).toBe('not_pending_payment');
+    // awaiting_fulfillment is an ADVANCED status, so this replay must NOT be
+    // flagged as an unresolved/black-hole payment.
+    expect(auditInsert).not.toHaveBeenCalled();
   });
 });

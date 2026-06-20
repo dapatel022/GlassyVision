@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { createRedemptionFulfillmentOrder } from '@/features/subscriptions/redemption-order';
 
 /** Statuses meaning the redemption already advanced past pending_payment. */
-const ADVANCED_STATUSES = ['awaiting_rx', 'in_review', 'in_production', 'shipped', 'delivered'];
+const ADVANCED_STATUSES = ['awaiting_rx', 'awaiting_fulfillment', 'in_review', 'in_production', 'shipped', 'delivered'];
 
 /**
  * Record a captured add-on payment that could not be turned into fulfillment, so
@@ -154,7 +154,7 @@ export async function confirmAddonPayment(
     customers: { email: string | null } | null;
   } | null;
 
-  const { orderId, lineItemId } = await createRedemptionFulfillmentOrder(
+  const { orderId, lineItemId, hasRxItems } = await createRedemptionFulfillmentOrder(
     {
       id: redemption.id,
       frame_variant_id: redemption.frame_variant_id,
@@ -172,7 +172,10 @@ export async function confirmAddonPayment(
   await supabase
     .from('subscription_redemptions')
     .update({
-      status: 'awaiting_rx',
+      // Rx pairs await the customer's prescription; non-Rx pairs (plano /
+      // sunglasses) are committed and wait in the admin non-Rx queue for release
+      // to the lab — never stranded in awaiting_rx.
+      status: hasRxItems ? 'awaiting_rx' : 'awaiting_fulfillment',
       internal_order_id: orderId,
       internal_line_item_id: lineItemId,
       add_on_shopify_order_id: addonShopifyOrderId,

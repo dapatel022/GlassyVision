@@ -188,7 +188,7 @@ export async function startRedemption(
   // 5. Fork on surcharge.
   if (!hasSurcharge && expectedSurcharge === 0) {
     // Covered pair — create the synthesized fulfillment order immediately.
-    const { orderId, lineItemId } = await createRedemptionFulfillmentOrder(
+    const { orderId, lineItemId, hasRxItems } = await createRedemptionFulfillmentOrder(
       {
         id: input.slotId,
         frame_variant_id: input.frameVariantId,
@@ -202,7 +202,10 @@ export async function startRedemption(
     await supabase
       .from('subscription_redemptions')
       .update({
-        status: 'awaiting_rx',
+        // Rx pairs await the customer's prescription; non-Rx pairs (plano /
+        // sunglasses) are committed and wait in the admin non-Rx queue for
+        // release to the lab — never stranded in awaiting_rx.
+        status: hasRxItems ? 'awaiting_rx' : 'awaiting_fulfillment',
         internal_order_id: orderId,
         internal_line_item_id: lineItemId,
         redeemed_at: new Date().toISOString(),

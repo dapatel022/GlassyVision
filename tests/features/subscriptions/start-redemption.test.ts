@@ -128,7 +128,8 @@ beforeEach(() => {
   createRedemptionFulfillmentOrder.mockReset();
   mockRpc.mockReset();
   getCurrentCustomer.mockResolvedValue({ id: 'cust-1', email: 'a@b.com', authUserId: 'au-1' });
-  createRedemptionFulfillmentOrder.mockResolvedValue({ orderId: 'ord-1', lineItemId: 'li-1' });
+  // baseInput uses an Rx lens (single_vision), so the synthesized order is Rx.
+  createRedemptionFulfillmentOrder.mockResolvedValue({ orderId: 'ord-1', lineItemId: 'li-1', hasRxItems: true });
 });
 
 describe('startRedemption', () => {
@@ -208,6 +209,27 @@ describe('startRedemption', () => {
     );
     // no Shopify cart for a covered pair
     expect(createCart).not.toHaveBeenCalled();
+  });
+
+  it('covered Rx pair: advances the redemption to awaiting_rx', async () => {
+    const spies = install();
+    const { startRedemption } = await import('@/features/subscriptions/actions/start-redemption');
+    await startRedemption(baseInput);
+    expect(spies.redemptionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'awaiting_rx', internal_order_id: 'ord-1' }),
+    );
+  });
+
+  it('covered NON-Rx pair: advances the redemption to awaiting_fulfillment (not awaiting_rx)', async () => {
+    createRedemptionFulfillmentOrder.mockResolvedValue({ orderId: 'ord-9', lineItemId: 'li-9', hasRxItems: false });
+    const spies = install();
+    const { startRedemption } = await import('@/features/subscriptions/actions/start-redemption');
+    await startRedemption(baseInput);
+    expect(spies.redemptionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'awaiting_fulfillment', internal_order_id: 'ord-9' }),
+    );
+    const statuses = spies.redemptionUpdate.mock.calls.map((c) => (c[0] as { status?: string }).status);
+    expect(statuses).not.toContain('awaiting_rx');
   });
 
   it('covered path: carries the membership currency (CAD) onto the fulfillment order', async () => {

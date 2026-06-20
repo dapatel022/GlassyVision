@@ -34,7 +34,7 @@ interface RedemptionInput {
 export async function createRedemptionFulfillmentOrder(
   redemption: RedemptionInput,
   supabase: SupabaseClient,
-): Promise<{ orderId: string; lineItemId: string }> {
+): Promise<{ orderId: string; lineItemId: string; hasRxItems: boolean }> {
   // 1. Frame spec from product_metadata (by Shopify variant id).
   const { data: meta } = await supabase
     .from('product_metadata')
@@ -101,5 +101,5 @@ export async function createRedemptionFulfillmentOrder(
     throw new Error(`Failed to create synthesized line item: ${liErr?.message ?? 'no row returned'}`);
   }
 
-  return { orderId: order.id, lineItemId: lineItem.id };
+  return { orderId: order.id, lineItemId: lineItem.id, hasRxItems };
 }
