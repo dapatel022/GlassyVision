@@ -18,6 +18,7 @@ const STATUS_LABEL: Record<RedemptionStatus, string> = {
   locked: 'Reserving…',
   pending_payment: 'Awaiting upgrade payment',
   awaiting_rx: 'Awaiting your prescription',
+  awaiting_fulfillment: 'Being prepared',
   in_review: 'Prescription in review',
   in_production: 'In production at the lab',
   shipped: 'Shipped',

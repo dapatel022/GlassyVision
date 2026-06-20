@@ -1410,7 +1410,7 @@ export type Database = {
       adjustment_reason: 'initial_stock' | 'restock' | 'order_fulfilled' | 'walk_in_depletion' | 'manual_correction' | 'damaged' | 'return_restock' | 'subscription_reserved' | 'subscription_release';
       order_source: 'shopify' | 'subscription';
       membership_status: 'active' | 'grace' | 'expired' | 'cancelled' | 'refunded' | 'frozen' | 'disputed';
-      redemption_status: 'available' | 'locked' | 'pending_payment' | 'awaiting_rx' | 'in_review' | 'in_production' | 'shipped' | 'delivered' | 'cancelled' | 'expired' | 'rx_rejected';
+      redemption_status: 'available' | 'locked' | 'pending_payment' | 'awaiting_rx' | 'awaiting_fulfillment' | 'in_review' | 'in_production' | 'shipped' | 'delivered' | 'cancelled' | 'expired' | 'rx_rejected';
       return_request_type: 'return' | 'replacement' | 'remake';
       return_reason: 'damaged' | 'defective' | 'wrong_size' | 'wrong_rx_typed' | 'wrong_rx_our_fault' | 'change_of_mind' | 'other';
       return_resolution: 'refund' | 'replacement' | 'store_credit';

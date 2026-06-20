@@ -17,7 +17,7 @@ export const dynamic = 'force-dynamic';
 
 /** Slots not yet committed to fulfillment — the only ones the engine may expire. */
 const UNCOMMITTED_STATUSES = ['available', 'locked', 'pending_payment'] as const;
-const COMMITTED_STATUSES = ['awaiting_rx', 'in_review', 'in_production', 'shipped'] as const;
+const COMMITTED_STATUSES = ['awaiting_rx', 'awaiting_fulfillment', 'in_review', 'in_production', 'shipped'] as const;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_GRACE_DAYS = 14;

@@ -442,6 +442,38 @@ describe('membership-expiry cron', () => {
     ).toBe(false);
   });
 
+  it('treats awaiting_fulfillment as committed (does not refund a non-Rx pair in flight)', async () => {
+    const termEnd = new Date(NOW.getTime() - 20 * 86400_000).toISOString();
+    const graceStart = new Date(NOW.getTime() - 20 * 86400_000).toISOString();
+    const { updates } = mockSupabase({
+      memberships: [
+        {
+          id: 'mem-1',
+          status: 'grace',
+          customer_id: 'cust-1',
+          shopify_order_id: 555,
+          currency: 'USD',
+          pairs_total: 3,
+          term_start: '2025-06-15T00:00:00.000Z',
+          term_end: termEnd,
+          term_months: 12,
+          rollover_count: 0,
+          grace_start: graceStart,
+          end_of_term_policy: { mode: 'refund', reminder_days: [60, 30, 7], grace_days: 14 },
+        },
+      ],
+      redemptions: { 'mem-1': [{ status: 'awaiting_fulfillment' }, { status: 'available' }] }, // non-Rx committed present
+    });
+
+    await GET(req('test-secret'));
+    expect(createRefund).not.toHaveBeenCalled();
+    expect(
+      updates.some(
+        (u) => u.table === 'subscription_memberships' && u.values.status === 'refunded',
+      ),
+    ).toBe(false);
+  });
+
   it('treats a live pending_payment slot as UNCOMMITTED: end-of-term proceeds and releases its reservation', async () => {
     // Finding 2 reconciliation: pending_payment is NOT committed. With only a
     // pending_payment slot live, the membership reaches its terminal state (it is
