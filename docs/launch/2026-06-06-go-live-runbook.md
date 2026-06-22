@@ -32,7 +32,7 @@ Hand me the project URLs/keys as you go (or set them in Vercel yourself — Step
    - Project URL → `NEXT_PUBLIC_SUPABASE_URL`
    - `anon` `public` key → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
    - `service_role` key (secret!) → `SUPABASE_SERVICE_ROLE_KEY`
-3. **[Joint]** Apply the **31 migrations**. Easiest path:
+3. **[Joint]** Apply the **38 migrations** (re-verified 2026-06-22). Easiest path:
    ```bash
    brew install supabase/tap/supabase            # if not installed
    supabase login
@@ -62,10 +62,10 @@ Hand me the project URLs/keys as you go (or set them in Vercel yourself — Step
    - **Admin API access token** → `SHOPIFY_ADMIN_ACCESS_TOKEN`. Scopes: `read_products`, `read_orders`, `write_orders` (refunds), `read_fulfillments`, `write_fulfillments`, `read_inventory`, `write_inventory`, `read_customers`.
    - **Storefront API access token** → `SHOPIFY_STOREFRONT_ACCESS_TOKEN`.
 4. **[You]** Get your **Location ID** (Settings → Locations, or Admin API `GET /locations.json`) → `SHOPIFY_LOCATION_ID` (used when creating fulfillments).
-5. **[You/Joint]** Register **webhooks** → endpoint `https://<your-app-url>/api/shopify/webhooks`, format JSON. The app handles exactly these **9 topics**:
+5. **[You/Joint]** Register **webhooks** → endpoint `https://<your-app-url>/api/shopify/webhooks`, format JSON. The app handles exactly these **10 topics** (re-verified 2026-06-22):
    `orders/create`, `orders/updated`, `orders/paid`, `refunds/create`,
    `disputes/create`, `orders/cancelled`, `products/update`,
-   `customers/redact`, `shop/redact`.
+   `customers/data_request`, `customers/redact`, `shop/redact`.
    Put the webhook signing secret → `SHOPIFY_WEBHOOK_SECRET`.
 6. **[You]** Enable **test payments** (Settings → Payments → choose "Bogus Gateway" / test mode) so checkout completes with no real money.
 
