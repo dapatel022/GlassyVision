@@ -7,6 +7,8 @@ import { generateWorkOrder } from '@/features/admin/actions/generate-work-order'
 import { buildRxUrl } from '@/features/rx-intake/lib/rx-token';
 import { renderRxRejected } from '@/lib/email/templates/rx-rejected';
 import { sendEmail } from '@/lib/email/resend';
+import { sendOrderEmailOnce } from '@/lib/email/transactional';
+import { renderRxApproved } from '@/lib/email/templates/rx-approved';
 
 type RxDecision = Database['public']['Enums']['rx_decision'];
 type RxRejectionReason = Database['public']['Enums']['rx_rejection_reason'];
@@ -136,6 +138,30 @@ export async function reviewRx(input: ReviewRxInput): Promise<ReviewRxResult> {
       if (failureAuditError) {
         console.error('[review-rx] failure-audit insert failed', failureAuditError);
       }
+    }
+
+    // Best-effort: tell the customer their Rx passed review and is in production.
+    // Fires for one-time AND synthesized subscription orders (both reach reviewRx).
+    // Gated only on a real recipient, deduped on (order_id, 'rx_approved').
+    try {
+      const { data: order } = await supabase
+        .from('orders')
+        .select('customer_email, shopify_order_number')
+        .eq('id', rxFile.order_id)
+        .single();
+      const email = order?.customer_email;
+      if (email && email !== 'no-email@shopify.com') {
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://glassyvision.com';
+        await sendOrderEmailOnce({
+          supabase,
+          orderId: rxFile.order_id,
+          customerEmail: email,
+          type: 'rx_approved',
+          rendered: renderRxApproved({ orderNumber: order?.shopify_order_number ?? null, ordersUrl: `${baseUrl}/account/orders` }),
+        });
+      }
+    } catch (e) {
+      console.error('[review-rx] approval email failed', { rxFileId: input.rxFileId, error: e });
     }
   }
 
