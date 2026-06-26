@@ -16,6 +16,7 @@ const EMPTY_VALUES: RxTypedValues = {
   odSphere: '', odCylinder: '', odAxis: '', odAdd: '',
   osSphere: '', osCylinder: '', osAxis: '', osAdd: '',
   pd: '', pdType: 'binocular', pdOd: '', pdOs: '',
+  odPrism: '', osPrism: '', odBase: '', osBase: '',
 };
 
 const FIELD_TIPS: Record<string, string> = {
@@ -48,9 +49,18 @@ function Field({
   );
 }
 
+const BASE_DIRECTIONS = [
+  { value: '', label: '— select —' },
+  { value: 'up', label: 'Up' },
+  { value: 'down', label: 'Down' },
+  { value: 'in', label: 'In (nasal)' },
+  { value: 'out', label: 'Out (temporal)' },
+];
+
 export default function RxTypedValuesStep({ initialValues, onSubmit, onSkip, ocrAssisted }: RxTypedValuesStepProps) {
   const [values, setValues] = useState<RxTypedValues>(initialValues || EMPTY_VALUES);
   const [isPdModalOpen, setIsPdModalOpen] = useState(false);
+  const [showPrism, setShowPrism] = useState(false);
 
   function update(field: keyof RxTypedValues, value: string) {
     setValues((prev) => ({ ...prev, [field]: value }));
@@ -144,6 +154,90 @@ export default function RxTypedValuesStep({ initialValues, onSubmit, onSkip, ocr
           <div className="grid grid-cols-2 gap-4 max-w-sm">
             <Field label="OD PD" value={values.pdOd || ''} onChange={(v) => update('pdOd', v)} tip={FIELD_TIPS.pd} />
             <Field label="OS PD" value={values.pdOs || ''} onChange={(v) => update('pdOs', v)} tip={FIELD_TIPS.pd} />
+          </div>
+        )}
+      </div>
+
+      <div className="border-t border-line pt-4 mb-6">
+        <button
+          type="button"
+          id="prism-disclosure-toggle"
+          aria-expanded={showPrism}
+          aria-controls="prism-disclosure-panel"
+          onClick={() => setShowPrism((p) => !p)}
+          className="flex items-center gap-2 text-sm font-sans font-bold text-muted hover:text-ink transition-colors"
+        >
+          <span aria-hidden="true">{showPrism ? '▲' : '▼'}</span>
+          Advanced (prism) — optional
+        </button>
+        {showPrism && (
+          <div id="prism-disclosure-panel" className="mt-4 grid grid-cols-2 gap-6">
+            <div>
+              <h3 className="font-sans font-bold text-sm text-ink mb-3">OD — Right Eye Prism</h3>
+              <div className="space-y-3">
+                <div>
+                  <label htmlFor="od-prism-amount" className="block text-xs font-sans font-bold text-muted-soft uppercase tracking-wider mb-1">
+                    Prism (Δ)
+                  </label>
+                  <input
+                    id="od-prism-amount"
+                    type="text"
+                    value={values.odPrism || ''}
+                    onChange={(e) => update('odPrism', e.target.value)}
+                    placeholder="—"
+                    className="w-full px-3 py-2 border border-line rounded-lg text-sm font-mono bg-white focus:outline-none focus:border-accent"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="od-base-direction" className="block text-xs font-sans font-bold text-muted-soft uppercase tracking-wider mb-1">
+                    Base Direction
+                  </label>
+                  <select
+                    id="od-base-direction"
+                    value={values.odBase || ''}
+                    onChange={(e) => update('odBase', e.target.value)}
+                    className="w-full px-3 py-2 border border-line rounded-lg text-sm bg-white focus:outline-none focus:border-accent"
+                  >
+                    {BASE_DIRECTIONS.map((d) => (
+                      <option key={d.value} value={d.value}>{d.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div>
+              <h3 className="font-sans font-bold text-sm text-ink mb-3">OS — Left Eye Prism</h3>
+              <div className="space-y-3">
+                <div>
+                  <label htmlFor="os-prism-amount" className="block text-xs font-sans font-bold text-muted-soft uppercase tracking-wider mb-1">
+                    Prism (Δ)
+                  </label>
+                  <input
+                    id="os-prism-amount"
+                    type="text"
+                    value={values.osPrism || ''}
+                    onChange={(e) => update('osPrism', e.target.value)}
+                    placeholder="—"
+                    className="w-full px-3 py-2 border border-line rounded-lg text-sm font-mono bg-white focus:outline-none focus:border-accent"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="os-base-direction" className="block text-xs font-sans font-bold text-muted-soft uppercase tracking-wider mb-1">
+                    Base Direction
+                  </label>
+                  <select
+                    id="os-base-direction"
+                    value={values.osBase || ''}
+                    onChange={(e) => update('osBase', e.target.value)}
+                    className="w-full px-3 py-2 border border-line rounded-lg text-sm bg-white focus:outline-none focus:border-accent"
+                  >
+                    {BASE_DIRECTIONS.map((d) => (
+                      <option key={d.value} value={d.value}>{d.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>

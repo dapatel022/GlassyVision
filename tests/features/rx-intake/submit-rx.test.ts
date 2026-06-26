@@ -224,6 +224,41 @@ describe('submitRx', () => {
     expect(mockFrom).not.toHaveBeenCalled();
   });
 
+  it('persists prism fields to rx_files when supplied', async () => {
+    const mockInsert = vi.fn(() => ({
+      select: vi.fn(() => ({ single: vi.fn(() => Promise.resolve({ data: { id: 'rx-file-3' }, error: null })) })),
+    }));
+    const mockUpdate = vi.fn(() => ({ eq: vi.fn(() => Promise.resolve({ error: null })) }));
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'orders') return { ...buildOrderSelect('alex@example.com'), update: mockUpdate };
+      return { insert: mockInsert };
+    });
+
+    const { submitRx } = await import('@/features/rx-intake/actions/submit-rx');
+    const result = await submitRx({
+      orderId: 'GV-1001',
+      publicOrderId: 'GV-1001',
+      ...TOKEN,
+      lineItemId: 'line-1',
+      storagePath: 'GV-1001/line-1/test.jpg',
+      mimeType: 'image/jpeg',
+      certificationChecked: true,
+      typedValues: {
+        odSphere: '-2.00', odCylinder: '', odAxis: '', osSphere: '-1.50', osCylinder: '', osAxis: '',
+        pd: '63', pdType: 'binocular',
+        odPrism: '2', odBase: 'in',
+      },
+      expirationDate: null,
+    });
+
+    expect(result.success).toBe(true);
+    const insertArg = (mockInsert.mock.calls as unknown as Array<[Record<string, unknown>]>)[0][0];
+    expect(insertArg.typed_od_prism).toBe('2');
+    expect(insertArg.typed_od_base).toBe('in');
+    expect(insertArg.typed_os_prism).toBeNull();
+    expect(insertArg.typed_os_base).toBeNull();
+  });
+
   it('rejects when storagePath is not under the order prefix (cross-order attach)', async () => {
     const { submitRx } = await import('@/features/rx-intake/actions/submit-rx');
     const result = await submitRx({
