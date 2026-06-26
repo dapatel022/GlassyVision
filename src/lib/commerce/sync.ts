@@ -122,10 +122,13 @@ export async function syncShopifyOrder(
         if (!insertErr && inserted) {
           customerUuid = inserted.id;
         } else if (insertErr?.code === '23505') {
+          // Escape LIKE metacharacters (_ and % are valid in email local-parts)
+          // so the recovery lookup matches only the exact address.
+          const escapedEmail = customerEmail.replace(/([\\%_])/g, '\\$1');
           const { data: existing } = await supabase
             .from('customers')
             .select('id')
-            .ilike('email', customerEmail)
+            .ilike('email', escapedEmail)
             .is('shopify_customer_id', null)
             .maybeSingle();
           if (existing) {
