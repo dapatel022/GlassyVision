@@ -21,6 +21,11 @@ vi.mock('@/features/subscriptions/provision-membership', () => ({
   provisionMembershipFromOrder: mockProvision,
 }));
 
+const mockCaptureMessage = vi.fn();
+vi.mock('@/lib/observability/sentry', () => ({
+  captureMessage: (...a: unknown[]) => mockCaptureMessage(...a),
+}));
+
 function buildRequest(headers: Record<string, string>, body: string): NextRequest {
   const reqHeaders = new Headers();
   for (const [k, v] of Object.entries(headers)) reqHeaders.set(k, v);
@@ -51,6 +56,7 @@ beforeEach(() => {
   mockSyncShopifyOrder.mockReset();
   mockProvision.mockReset();
   mockProvision.mockResolvedValue({ provisioned: false });
+  mockCaptureMessage.mockReset();
 });
 
 describe('Shopify Webhook Route Handler', () => {
@@ -169,5 +175,66 @@ describe('Shopify Webhook Route Handler', () => {
     ));
     expect(res.status).toBe(500);
     expect(update).toHaveBeenCalledTimes(1); // processing_error recorded
+  });
+
+  it('parks a webhook after MAX attempts instead of reprocessing forever', async () => {
+    mockVerifyWebhook.mockReturnValueOnce(true);
+    // syncShopifyOrder must NOT be called — throw if it is
+    mockSyncShopifyOrder.mockRejectedValue(new Error('should not be called'));
+    const update = eventUpdate();
+    mockFrom.mockImplementation((t: string) => {
+      if (t === 'webhook_events') return {
+        insert: eventInsert({ data: null, error: { code: '23505', message: 'duplicate key' } }),
+        select: eventSelect({ data: { id: 'evt-park', processed_at: null, attempt_count: 5 }, error: null }),
+        update,
+      };
+      return {};
+    });
+
+    const { POST } = await import('@/app/api/shopify/webhooks/route');
+    const res = await POST(buildRequest(
+      { 'x-shopify-hmac-sha256': 'good', 'x-shopify-topic': 'orders/create', 'x-shopify-webhook-id': 'poison-1' },
+      '{"id":99}',
+    ));
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.status).toBe('parked');
+    expect(mockSyncShopifyOrder).not.toHaveBeenCalled();
+    // update must park: set processed_at + processing_error
+    expect(update).toHaveBeenCalledTimes(1);
+    const updateArg = update.mock.calls[0][0] as Record<string, unknown>;
+    expect(updateArg.processing_error).toMatch(/parked/);
+    expect(typeof updateArg.processed_at).toBe('string');
+    // Sentry warning must be triggered
+    expect(mockCaptureMessage).toHaveBeenCalledWith(expect.stringContaining('parked'), 'warning');
+  });
+
+  it('still reprocesses below the cap and increments the attempt count', async () => {
+    mockVerifyWebhook.mockReturnValueOnce(true);
+    mockSyncShopifyOrder.mockResolvedValueOnce({ success: true, orderId: 'ord-retry' });
+    const update = eventUpdate();
+    mockFrom.mockImplementation((t: string) => {
+      if (t === 'webhook_events') return {
+        insert: eventInsert({ data: null, error: { code: '23505', message: 'duplicate key' } }),
+        select: eventSelect({ data: { id: 'evt-below', processed_at: null, attempt_count: 2 }, error: null }),
+        update,
+      };
+      if (t === 'orders') return { select: ordersSelect() };
+      return {};
+    });
+
+    const { POST } = await import('@/app/api/shopify/webhooks/route');
+    const res = await POST(buildRequest(
+      { 'x-shopify-hmac-sha256': 'good', 'x-shopify-topic': 'orders/create', 'x-shopify-webhook-id': 'below-cap-1' },
+      '{"id":10}',
+    ));
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.status).toBe('ok');
+    expect(mockSyncShopifyOrder).toHaveBeenCalledTimes(1);
+    // First update: increment attempt_count; second update: set processed_at
+    expect(update).toHaveBeenCalledTimes(2);
+    const firstUpdateArg = update.mock.calls[0][0] as Record<string, unknown>;
+    expect(firstUpdateArg.attempt_count).toBe(3);
   });
 });

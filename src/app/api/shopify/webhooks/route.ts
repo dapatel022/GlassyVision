@@ -8,6 +8,9 @@ import { handleRefundWebhook } from '@/features/subscriptions/webhooks/handle-re
 import { handleDisputeWebhook } from '@/features/subscriptions/webhooks/handle-dispute';
 import { anonymizeCustomer } from '@/features/account/actions/anonymize-customer';
 import type { Json } from '@/lib/supabase/types';
+import { captureMessage } from '@/lib/observability/sentry';
+
+const MAX_WEBHOOK_ATTEMPTS = 5;
 
 export async function POST(request: NextRequest) {
   const body = await request.text();
@@ -48,12 +51,26 @@ export async function POST(request: NextRequest) {
       // (processed_at is null) — otherwise this is a true duplicate.
       const { data: existing } = await supabase
         .from('webhook_events')
-        .select('id, processed_at')
+        .select('id, processed_at, attempt_count')
         .eq('shopify_event_id', eventId)
         .maybeSingle();
       if (!existing || existing.processed_at) {
         return NextResponse.json({ status: 'already_processed' });
       }
+      if ((existing.attempt_count ?? 0) >= MAX_WEBHOOK_ATTEMPTS) {
+        // Park the poison pill: stop Shopify's retries (return 200) and leave a
+        // durable, clearly-marked record for manual inspection.
+        await supabase
+          .from('webhook_events')
+          .update({ processed_at: new Date().toISOString(), processing_error: `parked: exceeded ${MAX_WEBHOOK_ATTEMPTS} attempts` })
+          .eq('id', existing.id);
+        captureMessage(`Webhook parked after ${MAX_WEBHOOK_ATTEMPTS} failed attempts: topic=${topic} event=${eventId}`, 'warning');
+        return NextResponse.json({ status: 'parked' });
+      }
+      await supabase
+        .from('webhook_events')
+        .update({ attempt_count: (existing.attempt_count ?? 0) + 1 })
+        .eq('id', existing.id);
       eventRowId = existing.id;
     } else {
       // Unexpected DB failure — return 5xx so Shopify retries the delivery.

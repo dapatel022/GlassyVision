@@ -771,6 +771,7 @@ export type Database = {
           received_at: string;
           processed_at: string | null;
           processing_error: string | null;
+          attempt_count: number;
         };
         Insert: {
           id?: string;
@@ -780,6 +781,7 @@ export type Database = {
           received_at?: string;
           processed_at?: string | null;
           processing_error?: string | null;
+          attempt_count?: number;
         };
         Update: {
           id?: string;
@@ -789,6 +791,7 @@ export type Database = {
           received_at?: string;
           processed_at?: string | null;
           processing_error?: string | null;
+          attempt_count?: number;
         };
         Relationships: [];
       };
