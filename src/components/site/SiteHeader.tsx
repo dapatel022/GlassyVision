@@ -59,7 +59,6 @@ export default function SiteHeader() {
             onClick={() => setMobileOpen((v) => !v)}
             aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
             aria-expanded={mobileOpen}
-            aria-controls="mobile-menu"
           >
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
               {mobileOpen ? (
@@ -73,7 +72,7 @@ export default function SiteHeader() {
       </div>
 
       {mobileOpen && (
-        <div id="mobile-menu" className="md:hidden mt-2 border border-line rounded-2xl bg-white/95 backdrop-blur-md shadow-lg overflow-hidden animate-fade-in-up">
+        <div className="md:hidden mt-2 border border-line rounded-2xl bg-white/95 backdrop-blur-md shadow-lg overflow-hidden animate-fade-in-up">
           <nav className="flex flex-col p-4 gap-3">
             {NAV_LINKS.map((l) => (
               <Link
