@@ -45,3 +45,61 @@ describe('syncShopifyOrder — customer dedupe', () => {
     expect((customerUpsert.mock.calls[0] as unknown[])[1]).toMatchObject({ onConflict: 'shopify_customer_id' });
   });
 });
+
+describe('syncShopifyOrder — guest customer race-safe write', () => {
+  it('inserts on first delivery', async () => {
+    const customerInsert = vi.fn(() => ({
+      select: () => ({ single: () => Promise.resolve({ data: { id: 'guest-1' }, error: null }) }),
+    }));
+    const customerUpdate = vi.fn();
+    const from = (table: string) => {
+      if (table === 'customers') return {
+        insert: customerInsert,
+        update: customerUpdate,
+        select: () => ({ ilike: () => ({ is: () => ({ maybeSingle: () => Promise.resolve({ data: null }) }) }) }),
+      };
+      if (table === 'orders') return {
+        select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: null }) }) }),
+        insert: () => ({ select: () => ({ single: () => Promise.resolve({ data: { id: 'ord-g1' }, error: null }) }) }),
+      };
+      return {};
+    };
+    const client = { from } as unknown as SupabaseClient<Database>;
+    const result = await syncShopifyOrder({ id: 6001, name: 'GV-6001', email: 'guest@b.com', line_items: [] }, client);
+    expect(result.success).toBe(true);
+    expect(customerInsert).toHaveBeenCalledTimes(1);
+    expect(customerUpdate).not.toHaveBeenCalled();
+  });
+
+  it('recovers from 23505 (concurrent insert) by finding and updating the existing guest row', async () => {
+    // First insert fires unique-index conflict; recover by selecting + updating
+    const customerInsert = vi.fn(() => ({
+      select: () => ({ single: () => Promise.resolve({ data: null, error: { code: '23505', message: 'duplicate' } }) }),
+    }));
+    const customerUpdate = vi.fn(() => ({
+      eq: () => ({ select: () => ({ single: () => Promise.resolve({ data: { id: 'guest-existing' }, error: null }) }) }),
+    }));
+    const customerSelect = vi.fn(() => ({
+      ilike: () => ({ is: () => ({ maybeSingle: () => Promise.resolve({ data: { id: 'guest-existing' } }) }) }),
+    }));
+    const from = (table: string) => {
+      if (table === 'customers') return {
+        insert: customerInsert,
+        update: customerUpdate,
+        select: customerSelect,
+      };
+      if (table === 'orders') return {
+        select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: null }) }) }),
+        insert: () => ({ select: () => ({ single: () => Promise.resolve({ data: { id: 'ord-g2' }, error: null }) }) }),
+      };
+      return {};
+    };
+    const client = { from } as unknown as SupabaseClient<Database>;
+    const result = await syncShopifyOrder({ id: 6002, name: 'GV-6002', email: 'guest@b.com', line_items: [] }, client);
+    expect(result.success).toBe(true);
+    // The order must still be linked: syncShopifyOrder succeeds and customerUuid is non-null
+    // (the order insert uses customerUuid — if it were null the order insert would still work
+    // because customer_id is nullable; the key assertion is success + update was called)
+    expect(customerUpdate).toHaveBeenCalledTimes(1);
+  });
+});

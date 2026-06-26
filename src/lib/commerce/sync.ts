@@ -110,36 +110,37 @@ export async function syncShopifyOrder(
           customerUuid = up.id;
         }
       } else {
-        // Guest checkout (no Shopify customer id): best-effort dedupe by email.
-        const { data: byEmail } = await supabase
+        // Guest checkout (no Shopify customer id). The partial unique index
+        // `uniq_guest_customer_email` (lower(email) where shopify_customer_id is
+        // null) makes this race-safe: insert first; if a concurrent delivery won,
+        // we get 23505 and update the existing guest row instead.
+        const { data: inserted, error: insertErr } = await supabase
           .from('customers')
+          .insert(customerObj)
           .select('id')
-          .eq('email', customerEmail)
-          .maybeSingle();
-
-        if (byEmail) {
-          const { data: updated, error: updateErr } = await supabase
+          .single();
+        if (!insertErr && inserted) {
+          customerUuid = inserted.id;
+        } else if (insertErr?.code === '23505') {
+          const { data: existing } = await supabase
             .from('customers')
-            .update(customerObj)
-            .eq('id', byEmail.id)
             .select('id')
-            .single();
-          if (updateErr) {
-            console.error('[sync] Failed to update customer', updateErr);
+            .ilike('email', customerEmail)
+            .is('shopify_customer_id', null)
+            .maybeSingle();
+          if (existing) {
+            const { data: updated } = await supabase
+              .from('customers')
+              .update(customerObj)
+              .eq('id', existing.id)
+              .select('id')
+              .single();
+            customerUuid = updated?.id ?? existing.id;
           } else {
-            customerUuid = updated.id;
+            console.error('[sync] guest customer conflict but no row found', { email: customerEmail });
           }
         } else {
-          const { data: inserted, error: insertErr } = await supabase
-            .from('customers')
-            .insert(customerObj)
-            .select('id')
-            .single();
-          if (insertErr) {
-            console.error('[sync] Failed to insert customer', insertErr);
-          } else {
-            customerUuid = inserted.id;
-          }
+          console.error('[sync] Failed to insert guest customer', insertErr);
         }
       }
     }
