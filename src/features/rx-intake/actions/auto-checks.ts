@@ -60,7 +60,7 @@ function checkRange(check: RangeCheck): AutoCheckResult | null {
 
 const VALID_BASES = ['up', 'down', 'in', 'out'];
 
-function num(v?: string): number | null {
+function parseNum(v?: string): number | null {
   if (!v || !v.trim()) return null;
   const n = Number(v);
   return Number.isNaN(n) ? null : n;
@@ -72,12 +72,12 @@ function enrichedChecks(values: RxTypedValues): AutoCheckResult[] {
   const push = (field: string, message: string) => out.push({ field, passed: false, type: 'warning', message });
 
   for (const eye of ['od', 'os'] as const) {
-    const add = num(values[`${eye}Add`]);
+    const add = parseNum(values[`${eye}Add`]);
     if (add !== null && (add < 0.5 || add > 3.5)) push(`${eye}Add`, 'Add power looks unusual (typical 0.50–3.50) — double-check');
 
-    const cyl = num(values[`${eye}Cylinder`]);
+    const cyl = parseNum(values[`${eye}Cylinder`]);
     const axisRaw = values[`${eye}Axis`];
-    const axis = num(axisRaw);
+    const axis = parseNum(axisRaw);
     if (cyl !== null && cyl !== 0 && (axis === null || axis === 0) && (!axisRaw || !axisRaw.trim())) {
       push(`${eye}Axis`, 'Cylinder is set but axis is missing — an axis is required with cylinder');
     }
@@ -85,12 +85,12 @@ function enrichedChecks(values: RxTypedValues): AutoCheckResult[] {
       push(`${eye}Cylinder`, 'Axis is set but cylinder is missing — confirm the cylinder value');
     }
 
-    const sph = num(values[`${eye}Sphere`]);
+    const sph = parseNum(values[`${eye}Sphere`]);
     if ((sph !== null && Math.abs(sph) >= 4) || (cyl !== null && Math.abs(cyl) >= 2)) {
       push(`${eye}HighIndex`, 'Strong correction — a high-index lens is recommended for thinner, lighter lenses');
     }
 
-    const prism = num(values[`${eye}Prism`]);
+    const prism = parseNum(values[`${eye}Prism`]);
     const baseDir = (values[`${eye}Base`] ?? '').trim().toLowerCase();
     if (prism !== null && prism !== 0) {
       if (!baseDir) push(`${eye}Base`, 'Prism amount is set but base direction is missing');
@@ -101,8 +101,8 @@ function enrichedChecks(values: RxTypedValues): AutoCheckResult[] {
     }
   }
 
-  const odS = num(values.odSphere);
-  const osS = num(values.osSphere);
+  const odS = parseNum(values.odSphere);
+  const osS = parseNum(values.osSphere);
   if (odS !== null && osS !== null && Math.abs(odS - osS) > 3) {
     push('anisometropia', 'Large difference between eyes (>3.00D) — please double-check both values');
   }

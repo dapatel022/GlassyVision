@@ -115,6 +115,10 @@ describe('Auto-checks', () => {
       const r = validateTypedValues({ ...base, odCylinder: '-1.50', odAxis: '' });
       expect(r.some((x) => x.field === 'odAxis' && !x.passed)).toBe(true);
     });
+    it('warns when axis is set but cylinder is missing', () => {
+      const r = validateTypedValues({ ...base, odAxis: '90', odCylinder: '0' });
+      expect(r.some((x) => x.field === 'odCylinder' && !x.passed)).toBe(true);
+    });
     it('suggests high-index for strong sphere (warning, not error)', () => {
       const r = validateTypedValues({ ...base, odSphere: '-5.00' });
       const hit = r.find((x) => x.field === 'odHighIndex');
