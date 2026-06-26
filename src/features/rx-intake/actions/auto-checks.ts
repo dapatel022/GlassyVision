@@ -1,18 +1,11 @@
 import { isRxExpired } from '@/lib/rx/expiration';
 
 export interface RxTypedValues {
-  odSphere: string;
-  odCylinder: string;
-  odAxis: string;
-  odAdd?: string;
-  osSphere: string;
-  osCylinder: string;
-  osAxis: string;
-  osAdd?: string;
-  pd: string;
-  pdType: 'mono' | 'binocular';
-  pdOd?: string;
-  pdOs?: string;
+  odSphere: string; odCylinder: string; odAxis: string; odAdd?: string;
+  osSphere: string; osCylinder: string; osAxis: string; osAdd?: string;
+  pd: string; pdType: 'mono' | 'binocular'; pdOd?: string; pdOs?: string;
+  // Optional prism (Task 2.3 adds the prism-specific checks):
+  odPrism?: string; osPrism?: string; odBase?: string; osBase?: string;
 }
 
 export interface AutoCheckResult {
@@ -65,6 +58,57 @@ function checkRange(check: RangeCheck): AutoCheckResult | null {
   return { field: check.field, passed: true, type: 'warning', message: '' };
 }
 
+const VALID_BASES = ['up', 'down', 'in', 'out'];
+
+function num(v?: string): number | null {
+  if (!v || !v.trim()) return null;
+  const n = Number(v);
+  return Number.isNaN(n) ? null : n;
+}
+
+/** Cross-field + advisory checks. All warnings — never block approval. */
+function enrichedChecks(values: RxTypedValues): AutoCheckResult[] {
+  const out: AutoCheckResult[] = [];
+  const push = (field: string, message: string) => out.push({ field, passed: false, type: 'warning', message });
+
+  for (const eye of ['od', 'os'] as const) {
+    const add = num(values[`${eye}Add`]);
+    if (add !== null && (add < 0.5 || add > 3.5)) push(`${eye}Add`, 'Add power looks unusual (typical 0.50–3.50) — double-check');
+
+    const cyl = num(values[`${eye}Cylinder`]);
+    const axisRaw = values[`${eye}Axis`];
+    const axis = num(axisRaw);
+    if (cyl !== null && cyl !== 0 && (axis === null || axis === 0) && (!axisRaw || !axisRaw.trim())) {
+      push(`${eye}Axis`, 'Cylinder is set but axis is missing — an axis is required with cylinder');
+    }
+    if ((axis !== null && axis !== 0) && (cyl === null || cyl === 0)) {
+      push(`${eye}Cylinder`, 'Axis is set but cylinder is missing — confirm the cylinder value');
+    }
+
+    const sph = num(values[`${eye}Sphere`]);
+    if ((sph !== null && Math.abs(sph) >= 4) || (cyl !== null && Math.abs(cyl) >= 2)) {
+      push(`${eye}HighIndex`, 'Strong correction — a high-index lens is recommended for thinner, lighter lenses');
+    }
+
+    const prism = num(values[`${eye}Prism`]);
+    const baseDir = (values[`${eye}Base`] ?? '').trim().toLowerCase();
+    if (prism !== null && prism !== 0) {
+      if (!baseDir) push(`${eye}Base`, 'Prism amount is set but base direction is missing');
+      else if (!VALID_BASES.includes(baseDir)) push(`${eye}Base`, 'Base direction must be up, down, in, or out');
+      if (prism > 6) push(`${eye}Prism`, 'Prism amount is unusually high (>6Δ) — please confirm');
+    } else if (baseDir && VALID_BASES.includes(baseDir)) {
+      push(`${eye}Prism`, 'Base direction is set but prism amount is missing');
+    }
+  }
+
+  const odS = num(values.odSphere);
+  const osS = num(values.osSphere);
+  if (odS !== null && osS !== null && Math.abs(odS - osS) > 3) {
+    push('anisometropia', 'Large difference between eyes (>3.00D) — please double-check both values');
+  }
+  return out;
+}
+
 export function validateTypedValues(
   values: RxTypedValues,
   expirationDate?: string,
@@ -85,6 +129,8 @@ export function validateTypedValues(
     const result = checkRange(check);
     if (result) results.push(result);
   }
+
+  results.push(...enrichedChecks(values));
 
   if (expirationDate) {
     const expired = isRxExpired(expirationDate);

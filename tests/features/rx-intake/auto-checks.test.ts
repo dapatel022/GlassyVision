@@ -103,4 +103,31 @@ describe('Auto-checks', () => {
       expect(expCheck?.passed).toBe(true);
     });
   });
+
+  describe('enriched optical checks', () => {
+    const base = { odSphere: '-1', odCylinder: '0', odAxis: '0', osSphere: '-1', osCylinder: '0', osAxis: '0', pd: '63', pdType: 'binocular' as const };
+
+    it('warns when add is out of range', () => {
+      const r = validateTypedValues({ ...base, odAdd: '5.00' });
+      expect(r.find((x) => x.field === 'odAdd' && !x.passed)?.type).toBe('warning');
+    });
+    it('warns when cylinder is set but axis is missing', () => {
+      const r = validateTypedValues({ ...base, odCylinder: '-1.50', odAxis: '' });
+      expect(r.some((x) => x.field === 'odAxis' && !x.passed)).toBe(true);
+    });
+    it('suggests high-index for strong sphere (warning, not error)', () => {
+      const r = validateTypedValues({ ...base, odSphere: '-5.00' });
+      const hit = r.find((x) => x.field === 'odHighIndex');
+      expect(hit?.passed).toBe(false);
+      expect(hit?.type).toBe('warning');
+    });
+    it('flags large anisometropia', () => {
+      const r = validateTypedValues({ ...base, odSphere: '0', osSphere: '-4.00' });
+      expect(r.some((x) => x.field === 'anisometropia' && !x.passed)).toBe(true);
+    });
+    it('passes a clean low Rx with no new warnings', () => {
+      const r = validateTypedValues(base);
+      expect(r.filter((x) => !x.passed)).toHaveLength(0);
+    });
+  });
 });
