@@ -108,12 +108,13 @@ export default function HeroShowcase() {
               <button
                 key={item.id}
                 onClick={() => handleSelect(idx)}
+                aria-pressed={activeIdx === idx}
+                aria-label={`Select ${item.title}`}
                 className={`w-7 h-7 rounded-full border-2 transition-all relative flex items-center justify-center ${
                   activeIdx === idx ? 'border-accent scale-110 shadow-sm' : 'border-transparent hover:scale-105'
                 }`}
                 style={{ backgroundColor: item.colorHex }}
                 title={item.title}
-                aria-label={`Switch to ${item.title}`}
               >
                 {activeIdx === idx && (
                   <span className="absolute w-2 h-2 rounded-full bg-white shadow-inner mix-blend-difference" />

@@ -333,6 +333,7 @@ export default function QuizPage() {
                 <button
                   key={opt.value}
                   onClick={() => selectOption(opt.value)}
+                  aria-pressed={isSelected}
                   className={`w-full p-4 border text-left rounded-xl transition-all duration-300 bg-white shadow-sm flex items-center gap-5 hover:border-accent hover:shadow-md hover:scale-[1.01] ${
                     isSelected ? 'border-accent ring-1 ring-accent bg-accent/[0.02]' : 'border-line'
                   }`}

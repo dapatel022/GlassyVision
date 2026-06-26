@@ -90,20 +90,26 @@ export default function PdpConfigurator({ product }: PdpConfiguratorProps) {
   return (
     <div className="space-y-6 select-none text-left">
       {/* Wizard Steps Indicator */}
-      <div className="flex border-b border-line pb-4 justify-between font-mono text-[9px] font-bold uppercase tracking-wider text-muted-soft">
+      <div role="tablist" aria-label="Configurator steps" className="flex border-b border-line pb-4 justify-between font-mono text-[9px] font-bold uppercase tracking-wider text-muted-soft">
         <button
+          role="tab"
+          aria-selected={step === 'frame'}
           onClick={() => setStep('frame')}
           className={`pb-1 ${step === 'frame' ? 'border-b border-accent text-accent' : 'hover:text-ink'}`}
         >
           1. Frame Fit
         </button>
         <button
+          role="tab"
+          aria-selected={step === 'lens-type'}
           onClick={() => setStep('lens-type')}
           className={`pb-1 ${step === 'lens-type' ? 'border-b border-accent text-accent' : 'hover:text-ink'}`}
         >
           2. Lens Choice
         </button>
         <button
+          role="tab"
+          aria-selected={step === 'customize'}
           onClick={() => setStep('customize')}
           className={`pb-1 ${step === 'customize' ? 'border-b border-accent text-accent' : 'hover:text-ink'}`}
         >
@@ -154,6 +160,7 @@ export default function PdpConfigurator({ product }: PdpConfiguratorProps) {
             {/* Category Cards */}
             <button
               onClick={() => handleCategoryChange('clear_rx')}
+              aria-pressed={category === 'clear_rx'}
               className={`w-full p-4 border rounded-xl text-left transition-all flex flex-col justify-between ${
                 category === 'clear_rx' ? 'border-accent bg-accent/[0.02] ring-1 ring-accent' : 'border-line hover:border-accent'
               }`}
@@ -173,6 +180,7 @@ export default function PdpConfigurator({ product }: PdpConfiguratorProps) {
 
             <button
               onClick={() => handleCategoryChange('sun_rx')}
+              aria-pressed={category === 'sun_rx'}
               className={`w-full p-4 border rounded-xl text-left transition-all flex flex-col justify-between ${
                 category === 'sun_rx' ? 'border-accent bg-accent/[0.02] ring-1 ring-accent' : 'border-line hover:border-accent'
               }`}
@@ -187,6 +195,7 @@ export default function PdpConfigurator({ product }: PdpConfiguratorProps) {
 
             <button
               onClick={() => handleCategoryChange('blue_light_non_rx')}
+              aria-pressed={category === 'blue_light_non_rx'}
               className={`w-full p-4 border rounded-xl text-left transition-all flex flex-col justify-between ${
                 category === 'blue_light_non_rx' ? 'border-accent bg-accent/[0.02] ring-1 ring-accent' : 'border-line hover:border-accent'
               }`}
@@ -201,6 +210,7 @@ export default function PdpConfigurator({ product }: PdpConfiguratorProps) {
 
             <button
               onClick={() => handleCategoryChange('demo_only')}
+              aria-pressed={category === 'demo_only'}
               className={`w-full p-4 border rounded-xl text-left transition-all flex flex-col justify-between ${
                 category === 'demo_only' ? 'border-accent bg-accent/[0.02] ring-1 ring-accent' : 'border-line hover:border-accent'
               }`}
@@ -247,6 +257,7 @@ export default function PdpConfigurator({ product }: PdpConfiguratorProps) {
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     onClick={() => handleLensTypeChange('single_vision')}
+                    aria-pressed={lensConfig.lensType === 'single_vision'}
                     className={`p-3 border rounded-lg text-center transition-colors ${
                       lensConfig.lensType === 'single_vision' ? 'border-accent bg-accent/5 font-bold' : 'border-line hover:border-accent'
                     }`}
@@ -255,6 +266,7 @@ export default function PdpConfigurator({ product }: PdpConfiguratorProps) {
                   </button>
                   <button
                     onClick={() => handleLensTypeChange('progressive')}
+                    aria-pressed={lensConfig.lensType === 'progressive'}
                     className={`p-3 border rounded-lg text-center transition-colors ${
                       lensConfig.lensType === 'progressive' ? 'border-accent bg-accent/5 font-bold' : 'border-line hover:border-accent'
                     }`}
@@ -273,6 +285,7 @@ export default function PdpConfigurator({ product }: PdpConfiguratorProps) {
                       <button
                         key={t}
                         onClick={() => handleTintChange(t)}
+                        aria-pressed={lensConfig.tint === t}
                         className={`p-2.5 border rounded-lg text-center transition-colors capitalize ${
                           lensConfig.tint === t ? 'border-accent bg-accent/5 font-bold' : 'border-line hover:border-accent'
                         }`}
@@ -290,6 +303,7 @@ export default function PdpConfigurator({ product }: PdpConfiguratorProps) {
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     onClick={() => toggleCoating('ar')}
+                    aria-pressed={lensConfig.coatings.includes('ar')}
                     className={`p-3 border rounded-lg text-left transition-colors flex justify-between items-center ${
                       lensConfig.coatings.includes('ar') ? 'border-accent bg-accent/5 font-bold' : 'border-line hover:border-accent'
                     }`}
@@ -298,6 +312,7 @@ export default function PdpConfigurator({ product }: PdpConfiguratorProps) {
                   </button>
                   <button
                     onClick={() => toggleCoating('photochromic')}
+                    aria-pressed={lensConfig.coatings.includes('photochromic')}
                     className={`p-3 border rounded-lg text-left transition-colors flex justify-between items-center ${
                       lensConfig.coatings.includes('photochromic') ? 'border-accent bg-accent/5 font-bold' : 'border-line hover:border-accent'
                     }`}

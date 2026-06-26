@@ -124,6 +124,7 @@ export default function RxTypedValuesStep({ initialValues, onSubmit, onSkip, ocr
             <div className="flex items-center gap-2">
               <button
                 type="button"
+                aria-pressed={values.pdType === 'binocular'}
                 onClick={() => update('pdType', 'binocular')}
                 className={`text-xs px-3 py-1 rounded-full ${values.pdType === 'binocular' ? 'bg-accent text-white' : 'bg-base-deeper text-muted'}`}
               >
@@ -131,6 +132,7 @@ export default function RxTypedValuesStep({ initialValues, onSubmit, onSkip, ocr
               </button>
               <button
                 type="button"
+                aria-pressed={values.pdType === 'mono'}
                 onClick={() => update('pdType', 'mono')}
                 className={`text-xs px-3 py-1 rounded-full ${values.pdType === 'mono' ? 'bg-accent text-white' : 'bg-base-deeper text-muted'}`}
               >
