@@ -103,6 +103,20 @@ export default function RxReviewDetail({ detail, onReviewComplete }: RxReviewDet
         )}
       </div>
 
+      {(() => {
+        const warnings = (detail.autoCheckResults?.warnings as Array<{ field: string; message: string }> | undefined);
+        return warnings && warnings.length > 0 ? (
+          <div role="status" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 mb-4">
+            <p className="font-semibold">Auto-check warnings (advisory — verify against the image):</p>
+            <ul className="mt-1 list-disc pl-5">
+              {warnings.map((w, i) => (
+                <li key={i}><span className="font-medium">{w.field}:</span> {w.message}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null;
+      })()}
+
       <div className="bg-base-deeper rounded-lg p-4 mb-4">
         <div className="flex items-center justify-between mb-2">
           <p className="font-sans font-bold text-xs uppercase tracking-wider text-muted-soft">Typed Values</p>
