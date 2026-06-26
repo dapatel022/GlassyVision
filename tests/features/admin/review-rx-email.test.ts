@@ -133,6 +133,23 @@ describe('reviewRx transactional email', () => {
     expect(sendOnce).not.toHaveBeenCalled();
   });
 
+  it('does NOT send rx_approved when work order generation fails', async () => {
+    buildApproveMocks();
+    generateWorkOrderMock.mockResolvedValue({ success: false as const, error: 'lens spec missing' } as never);
+
+    const { reviewRx } = await import('@/features/admin/rx-queue/actions/review-rx');
+
+    const result = await reviewRx({
+      rxFileId: 'rx-1',
+      decision: 'approved',
+      decisionReason: 'clean_approved',
+      notes: null,
+    });
+
+    expect(result.success).toBe(true);
+    expect(sendOnce).not.toHaveBeenCalled();
+  });
+
   it('email failure does not change the approve success result', async () => {
     buildApproveMocks();
     sendOnce.mockRejectedValue(new Error('network'));
