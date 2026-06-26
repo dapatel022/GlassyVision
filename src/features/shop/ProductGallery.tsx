@@ -38,11 +38,13 @@ export default function ProductGallery({ images, title }: ProductGalleryProps) {
             <button
               key={img.url}
               onClick={() => setActive(i)}
+              aria-label={`View image ${i + 1} of ${images.length}`}
+              aria-pressed={i === active}
               className={`relative aspect-square bg-base-deeper rounded-lg overflow-hidden border-2 ${
                 i === active ? 'border-accent' : 'border-transparent'
               }`}
             >
-              <Image src={img.url} alt="" fill sizes="10vw" className="object-cover" />
+              <Image src={img.url} alt="" aria-hidden="true" fill sizes="10vw" className="object-cover" />
             </button>
           ))}
         </div>

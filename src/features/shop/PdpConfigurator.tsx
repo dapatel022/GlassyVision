@@ -127,7 +127,7 @@ export default function PdpConfigurator({ product }: PdpConfiguratorProps) {
               onClick={() => setIsVtoOpen(true)}
               className="text-xs text-accent font-bold uppercase hover:underline flex items-center gap-1.5"
             >
-              🕶️ Try-On Live
+              <span aria-hidden="true">🕶️</span> Try-On Live
             </button>
           </div>
 

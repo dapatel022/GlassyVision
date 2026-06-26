@@ -145,7 +145,7 @@ export default function RxTypedValuesStep({ initialValues, onSubmit, onSkip, ocr
             onClick={() => setIsPdModalOpen(true)}
             className="text-xs text-accent font-sans font-bold hover:text-accent-light flex items-center gap-1 transition-colors"
           >
-            📷 Measure with Camera
+            <span aria-hidden="true">📷</span> Measure with Camera
           </button>
         </div>
         {values.pdType === 'binocular' ? (

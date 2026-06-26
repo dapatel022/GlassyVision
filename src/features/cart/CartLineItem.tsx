@@ -25,7 +25,7 @@ export default function CartLineItem({ line }: { line: CartLine }) {
       <div className="w-20 h-20 shrink-0 bg-base-deeper rounded-lg overflow-hidden">
         {line.image ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={line.image} alt="" className="w-full h-full object-cover" />
+          <img src={line.image} alt="" aria-hidden="true" className="w-full h-full object-cover" />
         ) : null}
       </div>
       <div className="flex-1 min-w-0">

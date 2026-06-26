@@ -214,13 +214,14 @@ export default function VirtualTryOn({ isOpen, onClose, product }: VirtualTryOnP
 
   return (
     <div
+      role="presentation"
       className="fixed inset-0 z-50 flex items-center justify-center bg-ink/75 backdrop-blur-sm p-4"
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleMouseUp}
     >
-      <div className="bg-white border border-line rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col h-[90vh] md:h-auto">
+      <div role="dialog" aria-label="AR Virtual try-on" aria-modal="true" className="bg-white border border-line rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col h-[90vh] md:h-auto">
         {/* Header */}
         <div className="px-6 py-4 border-b border-line flex items-center justify-between bg-base">
           <div>
@@ -241,6 +242,7 @@ export default function VirtualTryOn({ isOpen, onClose, product }: VirtualTryOnP
           {/* Main Viewport */}
           <div
             ref={containerRef}
+            role="presentation"
             className="flex-1 relative aspect-[4/3] md:aspect-square bg-black overflow-hidden flex items-center justify-center cursor-crosshair touch-none"
             onMouseDown={handleMouseDown}
             onTouchStart={handleTouchStart}

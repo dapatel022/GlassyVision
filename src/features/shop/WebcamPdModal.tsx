@@ -130,6 +130,7 @@ export default function WebcamPdModal({ isOpen, onClose, onApply }: WebcamPdModa
 
   return (
     <div
+      role="presentation"
       className="fixed inset-0 z-50 flex items-center justify-center bg-ink/65 backdrop-blur-sm p-4 select-none"
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
@@ -137,7 +138,7 @@ export default function WebcamPdModal({ isOpen, onClose, onApply }: WebcamPdModa
       onTouchMove={handleTouchMove}
       onTouchEnd={handleMouseUp}
     >
-      <div className="bg-white border border-line rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col">
+      <div role="dialog" aria-label="Webcam PD measurement tool" aria-modal="true" className="bg-white border border-line rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col">
         {/* Modal Header */}
         <div className="px-6 py-4 border-b border-line flex items-center justify-between bg-base">
           <div>
@@ -214,24 +215,40 @@ export default function WebcamPdModal({ isOpen, onClose, onApply }: WebcamPdModa
 
               {/* Drag handles */}
               <div
+                role="button"
+                aria-label="Drag left edge of card"
+                tabIndex={0}
                 className="absolute left-0 top-0 bottom-0 w-3 cursor-ew-resize bg-accent/25 hover:bg-accent/50"
                 onMouseDown={() => setIsDragging('card-left')}
                 onTouchStart={() => setIsDragging('card-left')}
+                onKeyDown={() => {}}
               />
               <div
+                role="button"
+                aria-label="Drag right edge of card"
+                tabIndex={0}
                 className="absolute right-0 top-0 bottom-0 w-3 cursor-ew-resize bg-accent/25 hover:bg-accent/50"
                 onMouseDown={() => setIsDragging('card-right')}
                 onTouchStart={() => setIsDragging('card-right')}
+                onKeyDown={() => {}}
               />
               <div
+                role="button"
+                aria-label="Drag top edge of card"
+                tabIndex={0}
                 className="absolute top-0 left-0 right-0 h-3 cursor-ns-resize bg-accent/25 hover:bg-accent/50"
                 onMouseDown={() => setIsDragging('card-top')}
                 onTouchStart={() => setIsDragging('card-top')}
+                onKeyDown={() => {}}
               />
               <div
+                role="button"
+                aria-label="Drag bottom edge of card"
+                tabIndex={0}
                 className="absolute bottom-0 left-0 right-0 h-3 cursor-ns-resize bg-accent/25 hover:bg-accent/50"
                 onMouseDown={() => setIsDragging('card-bottom')}
                 onTouchStart={() => setIsDragging('card-bottom')}
+                onKeyDown={() => {}}
               />
             </div>
           )}
@@ -244,10 +261,14 @@ export default function WebcamPdModal({ isOpen, onClose, onApply }: WebcamPdModa
 
               {/* Left Pupil Target */}
               <div
+                role="button"
+                aria-label="Drag right pupil marker"
+                tabIndex={0}
                 className="absolute w-8 h-8 -ml-4 -mt-4 cursor-crosshair group"
                 style={{ left: `${pupilLeft}%`, top: `${pupilY}%` }}
                 onMouseDown={() => setIsDragging('pupil-left')}
                 onTouchStart={() => setIsDragging('pupil-left')}
+                onKeyDown={() => {}}
               >
                 {/* Outer Ring */}
                 <div className="w-full h-full rounded-full border-2 border-success animate-pulse" />
@@ -262,10 +283,14 @@ export default function WebcamPdModal({ isOpen, onClose, onApply }: WebcamPdModa
 
               {/* Right Pupil Target */}
               <div
+                role="button"
+                aria-label="Drag left pupil marker"
+                tabIndex={0}
                 className="absolute w-8 h-8 -ml-4 -mt-4 cursor-crosshair group"
                 style={{ left: `${pupilRight}%`, top: `${pupilY}%` }}
                 onMouseDown={() => setIsDragging('pupil-right')}
                 onTouchStart={() => setIsDragging('pupil-right')}
+                onKeyDown={() => {}}
               >
                 {/* Outer Ring */}
                 <div className="w-full h-full rounded-full border-2 border-success animate-pulse" />
@@ -278,6 +303,9 @@ export default function WebcamPdModal({ isOpen, onClose, onApply }: WebcamPdModa
 
               {/* Linking PD Line */}
               <div
+                role="button"
+                aria-label="Drag to adjust pupil height"
+                tabIndex={0}
                 className="absolute h-[1.5px] bg-success/60 border-t border-dashed border-success/60 flex items-center justify-center cursor-ns-resize"
                 style={{
                   left: `${pupilLeft}%`,
@@ -286,6 +314,7 @@ export default function WebcamPdModal({ isOpen, onClose, onApply }: WebcamPdModa
                 }}
                 onMouseDown={() => setIsDragging('pupil-y')}
                 onTouchStart={() => setIsDragging('pupil-y')}
+                onKeyDown={() => {}}
               >
                 <span className="bg-success text-white font-mono text-[9px] font-bold px-2 py-0.5 rounded-full -mt-0.5 z-10 shadow">
                   PD: {roundedPd}mm
