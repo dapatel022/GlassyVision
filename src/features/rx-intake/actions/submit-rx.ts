@@ -6,6 +6,8 @@ import { createHash } from 'crypto';
 import type { Json } from '@/lib/supabase/types';
 import { verifyRxToken } from '../lib/rx-token';
 import { validateTypedValues, validateImage, type RxTypedValues, type AutoCheckResult } from './auto-checks';
+import { sendOrderEmailOnce } from '@/lib/email/transactional';
+import { renderRxReceived } from '@/lib/email/templates/rx-received';
 
 export interface SubmitRxInput {
   /** Order DB UUID — used to query orders/line items. */
@@ -189,6 +191,22 @@ export async function submitRx(input: SubmitRxInput): Promise<SubmitRxResult> {
     .from('orders')
     .update({ rx_status: 'uploaded_pending_review' as const })
     .eq('id', input.orderId);
+
+  // Best-effort: confirm to the customer that the upload landed and is queued for
+  // manual review. Deduped on (order_id, 'rx_received'); never gates the upload.
+  if (order.customer_email && order.customer_email !== 'no-email@shopify.com') {
+    try {
+      await sendOrderEmailOnce({
+        supabase,
+        orderId: input.orderId,
+        customerEmail: order.customer_email,
+        type: 'rx_received',
+        rendered: renderRxReceived({ orderNumber: order.shopify_order_number }),
+      });
+    } catch (e) {
+      console.error('[submit-rx] rx_received email failed', { orderId: input.orderId, error: e });
+    }
+  }
 
   return {
     success: true,
