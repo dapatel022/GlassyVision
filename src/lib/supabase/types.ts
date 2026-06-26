@@ -1409,6 +1409,10 @@ export type Database = {
         };
         Returns: string | null;
       };
+      claim_customers_by_verified_email: {
+        Args: { p_auth_user_id: string; p_email: string };
+        Returns: number;
+      };
     };
     Enums: {
       user_role: 'pending' | 'founder' | 'reviewer' | 'lab_admin' | 'lab_operator' | 'lab_qc' | 'lab_shipping';

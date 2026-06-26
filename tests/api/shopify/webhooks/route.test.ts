@@ -202,7 +202,7 @@ describe('Shopify Webhook Route Handler', () => {
     expect(mockSyncShopifyOrder).not.toHaveBeenCalled();
     // update must park: set processed_at + processing_error
     expect(update).toHaveBeenCalledTimes(1);
-    const updateArg = update.mock.calls[0][0] as Record<string, unknown>;
+    const updateArg = (update.mock.calls[0] as unknown[])[0] as Record<string, unknown>;
     expect(updateArg.processing_error).toMatch(/parked/);
     expect(typeof updateArg.processed_at).toBe('string');
     // Sentry warning must be triggered
@@ -234,7 +234,7 @@ describe('Shopify Webhook Route Handler', () => {
     expect(mockSyncShopifyOrder).toHaveBeenCalledTimes(1);
     // First update: increment attempt_count; second update: set processed_at
     expect(update).toHaveBeenCalledTimes(2);
-    const firstUpdateArg = update.mock.calls[0][0] as Record<string, unknown>;
+    const firstUpdateArg = (update.mock.calls[0] as unknown[])[0] as Record<string, unknown>;
     expect(firstUpdateArg.attempt_count).toBe(3);
   });
 });
