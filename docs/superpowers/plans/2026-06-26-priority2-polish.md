@@ -13,7 +13,7 @@
 - **No compliance change:** image-required-before-ship, manual admin eyeball, 3-yr retention, US/CA market gate, Rx-expiration gate stay exactly as-is. All new optical checks are advisory `warning`s — never block approval, never auto-approve, never let typed-only values reach the lab.
 - **Emails are gap-fill only:** do NOT add order-confirmation or shipping-confirmation emails (Shopify owns those). Only `rx_received` and `rx_approved`.
 - **Best-effort emails:** every send is wrapped in try/catch and never fails its host action.
-- **Migrations:** next free number is `00039` (highest today is `00038`). This plan adds `00039`–`00042`. Docker/Supabase CLI may be unavailable locally — validate migrations by inspection; they run against the cloud DB per `docs/launch/2026-06-06-go-live-runbook.md`. Do not run `supabase db reset` unless Docker is confirmed up.
+- **Migrations:** `00039` enum (Feature 1) + `00040` communications-once unique index (Feature 1 review fix) are taken. Remaining: `00041` prism (Feature 2), `00042` webhook attempt_count (Feature 3a), `00043` guest dedupe (Feature 3b). Docker/Supabase CLI may be unavailable locally — validate migrations by inspection; they run against the cloud DB per `docs/launch/2026-06-06-go-live-runbook.md`. Do not run `supabase db reset` unless Docker is confirmed up.
 - **No new runtime deps** except `eslint-plugin-jsx-a11y` (dev-only).
 - **Per CLAUDE.md:** run `npm run lint` before every commit; keep files < ~300 lines; commit with HEREDOC; end commit messages with the `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>` trailer.
 - **Baseline:** 402 unit tests green today. Each task keeps the full suite green (`npm test`).
@@ -557,7 +557,7 @@ EOF
 ### Task 2.1: Migration — prism columns on `rx_files`
 
 **Files:**
-- Create: `supabase/migrations/00040_rx_prism.sql`
+- Create: `supabase/migrations/00041_rx_prism.sql`
 - Modify: `src/lib/supabase/types.ts` (`rx_files` Row/Insert/Update — add the four nullable text columns)
 
 **Interfaces:**
@@ -566,7 +566,7 @@ EOF
 - [ ] **Step 1: Write the migration**
 
 ```sql
--- 00040_rx_prism.sql
+-- 00041_rx_prism.sql
 -- Optional prism correction, typed double-check values only (the approved image
 -- remains authoritative). Amount in prism diopters; base is one of up/down/in/out.
 alter table rx_files
@@ -586,7 +586,7 @@ Run: `grep -n "typed_od_add" src/lib/supabase/types.ts`
 - [ ] **Step 4: Commit**
 
 ```bash
-git add supabase/migrations/00040_rx_prism.sql src/lib/supabase/types.ts
+git add supabase/migrations/00041_rx_prism.sql src/lib/supabase/types.ts
 git commit -m "$(cat <<'EOF'
 feat(rx): add prism columns to rx_files (typed double-check values)
 
@@ -902,7 +902,7 @@ EOF
 ### Task 3.1: Webhook poison-pill cap
 
 **Files:**
-- Create: `supabase/migrations/00041_webhook_attempt_count.sql`
+- Create: `supabase/migrations/00042_webhook_attempt_count.sql`
 - Modify: `src/lib/supabase/types.ts` (`webhook_events` Row/Insert/Update — add `attempt_count: number`)
 - Modify: `src/app/api/shopify/webhooks/route.ts` (reprocess branch + a `MAX_WEBHOOK_ATTEMPTS` constant)
 - Test: `tests/api/shopify/webhooks/route.test.ts` (extend)
@@ -913,7 +913,7 @@ EOF
 - [ ] **Step 1: Write the migration**
 
 ```sql
--- 00041_webhook_attempt_count.sql
+-- 00042_webhook_attempt_count.sql
 -- Poison-pill guard: count reprocess attempts so a permanently-failing payload
 -- can be parked instead of retried forever.
 alter table webhook_events
@@ -991,7 +991,7 @@ In the duplicate branch, replace the existing `existing` SELECT + reprocess logi
 
 ```bash
 npm run lint
-git add supabase/migrations/00041_webhook_attempt_count.sql src/lib/supabase/types.ts src/app/api/shopify/webhooks/route.ts tests/api/shopify/webhooks/route.test.ts
+git add supabase/migrations/00042_webhook_attempt_count.sql src/lib/supabase/types.ts src/app/api/shopify/webhooks/route.ts tests/api/shopify/webhooks/route.test.ts
 git commit -m "$(cat <<'EOF'
 feat(webhooks): park poison-pill events after max attempts (Sentry alert, stop retries)
 
@@ -1005,7 +1005,7 @@ EOF
 ### Task 3.2: Migration — guest dedupe (consolidate + index + claim RPC)
 
 **Files:**
-- Create: `supabase/migrations/00042_guest_customer_dedupe.sql`
+- Create: `supabase/migrations/00043_guest_customer_dedupe.sql`
 
 **Interfaces:**
 - Produces: partial unique index `uniq_guest_customer_email` on `customers (lower(email)) where shopify_customer_id is null`; RPC `claim_customers_by_verified_email(p_auth_user_id uuid, p_email text) returns int` (security definer, service_role only).
@@ -1013,7 +1013,7 @@ EOF
 - [ ] **Step 1: Write the migration**
 
 ```sql
--- 00042_guest_customer_dedupe.sql
+-- 00043_guest_customer_dedupe.sql
 
 -- 1) Consolidate any pre-existing guest duplicates so the unique index below can
 --    be created. (Fresh DB: a no-op.) Keep the oldest guest row per lower(email);
@@ -1115,7 +1115,7 @@ grant execute on function claim_customers_by_verified_email(uuid, text) to servi
 - [ ] **Step 2: Commit**
 
 ```bash
-git add supabase/migrations/00042_guest_customer_dedupe.sql
+git add supabase/migrations/00043_guest_customer_dedupe.sql
 git commit -m "$(cat <<'EOF'
 feat(customers): guest-email partial unique index + atomic claim consolidation RPC
 
@@ -1436,7 +1436,7 @@ EOF
 # Final integration gate (after all four features + their reviews)
 
 - [ ] **Full verification** — Run: `npm run lint && npm test && npm run build`. All green; capture the test count (should be > 402).
-- [ ] **Migration sanity** — re-read `00039`–`00042` in order; confirm no number collision and each is idempotent (`if not exists` / `add value if not exists`). If Docker is available, `supabase db reset` to confirm they apply cleanly; otherwise note "validated by inspection" per the runbook.
+- [ ] **Migration sanity** — re-read `00039`–`00043` in order; confirm no number collision and each is idempotent (`if not exists` / `add value if not exists`). If Docker is available, `supabase db reset` to confirm they apply cleanly; otherwise note "validated by inspection" per the runbook.
 - [ ] **Finish the branch** — use superpowers:finishing-a-development-branch to present merge/PR options for `feature/priority2-polish`.
 
 ---
@@ -1452,4 +1452,4 @@ EOF
 
 **Placeholder scan:** the only deliberately-deferred specifics are UI-edit details in Feature 4 tasks (verified by lint/axe, not unit tests) and the two test harnesses (1.5/1.6) that say "mirror the existing test mocks" — acceptable because the concrete assertion and wiring code are given; the harness is copy-from-neighbor.
 
-**Type consistency:** `sendOrderEmailOnce` signature is identical in 1.2, 1.5, 1.6. `RxTypedValues` prism fields (`odPrism/osPrism/odBase/osBase`) are consistent across 2.2, 2.3, 2.4. `comm_type` value `'rx_received'` added in 1.1 before first use in 1.2/1.5. RPC name `claim_customers_by_verified_email` consistent across 3.2 and 3.4. Migration numbers `00039`→`00042` are unique and sequential.
+**Type consistency:** `sendOrderEmailOnce` signature is identical in 1.2, 1.5, 1.6. `RxTypedValues` prism fields (`odPrism/osPrism/odBase/osBase`) are consistent across 2.2, 2.3, 2.4. `comm_type` value `'rx_received'` added in 1.1 before first use in 1.2/1.5. RPC name `claim_customers_by_verified_email` consistent across 3.2 and 3.4. Migration numbers `00039`→`00043` are unique and sequential (`00040` = communications-once index added in the Feature 1 review fix).
