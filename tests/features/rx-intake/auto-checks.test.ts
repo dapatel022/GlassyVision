@@ -130,4 +130,24 @@ describe('Auto-checks', () => {
       expect(r.filter((x) => !x.passed)).toHaveLength(0);
     });
   });
+
+  describe('prism checks', () => {
+    const base = { odSphere: '-1', odCylinder: '0', odAxis: '0', osSphere: '-1', osCylinder: '0', osAxis: '0', pd: '63', pdType: 'binocular' as const };
+    it('warns on an invalid base direction', () => {
+      const r = validateTypedValues({ ...base, odPrism: '2', odBase: 'sideways' });
+      expect(r.some((x) => x.field === 'odBase' && !x.passed)).toBe(true);
+    });
+    it('warns when prism amount is set but base is missing', () => {
+      const r = validateTypedValues({ ...base, odPrism: '2', odBase: '' });
+      expect(r.some((x) => x.field === 'odBase' && !x.passed)).toBe(true);
+    });
+    it('warns on an unusually high prism amount', () => {
+      const r = validateTypedValues({ ...base, odPrism: '9', odBase: 'in' });
+      expect(r.some((x) => x.field === 'odPrism' && !x.passed)).toBe(true);
+    });
+    it('accepts a valid low prism', () => {
+      const r = validateTypedValues({ ...base, odPrism: '2', odBase: 'in' });
+      expect(r.filter((x) => !x.passed)).toHaveLength(0);
+    });
+  });
 });
