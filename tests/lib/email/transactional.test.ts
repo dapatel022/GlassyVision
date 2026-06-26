@@ -7,9 +7,9 @@ import { sendOrderEmailOnce } from '@/lib/email/transactional';
 
 const rendered = { subject: 'S', html: '<p>h</p>', text: 't' };
 
-/** Minimal chainable Supabase stub: control what the dedup SELECT returns and
- *  capture inserts/updates. */
-function makeSupabase(existing: unknown) {
+/** Minimal chainable Supabase stub: control what the dedup SELECT returns,
+ *  capture inserts/updates, and optionally simulate an INSERT error. */
+function makeSupabase(existing: unknown, insertError?: { code: string } | null) {
   const inserted: unknown[] = [];
   const client = {
     from() { return this; },
@@ -17,7 +17,17 @@ function makeSupabase(existing: unknown) {
     eq() { return this; },
     neq() { return this; },
     maybeSingle: async () => ({ data: existing }),
-    insert(row: unknown) { inserted.push(row); return { select: () => ({ single: async () => ({ data: { id: 'comm-1' }, error: null }) }) }; },
+    insert(row: unknown) {
+      inserted.push(row);
+      return {
+        select: () => ({
+          single: async () =>
+            insertError
+              ? { data: null, error: insertError }
+              : { data: { id: 'comm-1' }, error: null },
+        }),
+      };
+    },
     update() { return { eq: async () => ({ error: null }) }; },
     _inserted: inserted,
   };
@@ -46,5 +56,14 @@ describe('sendOrderEmailOnce', () => {
     const supabase = makeSupabase(null);
     const r = await sendOrderEmailOnce({ supabase, orderId: 'o1', customerEmail: 'a@b.com', type: 'rx_received', rendered });
     expect(r).toEqual({ sent: false, reason: 'send_failed' });
+  });
+
+  it('returns duplicate and does NOT call sendEmail when claim INSERT returns 23505', async () => {
+    // Simulate a concurrent race: the pre-SELECT sees nothing, but the INSERT
+    // hits the partial unique index (another request claimed the row first).
+    const supabase = makeSupabase(null, { code: '23505' });
+    const r = await sendOrderEmailOnce({ supabase, orderId: 'o1', customerEmail: 'a@b.com', type: 'rx_received', rendered });
+    expect(r).toEqual({ sent: false, reason: 'duplicate' });
+    expect(sendEmailMock).not.toHaveBeenCalled();
   });
 });

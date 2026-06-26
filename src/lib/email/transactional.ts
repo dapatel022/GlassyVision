@@ -30,11 +30,18 @@ export async function sendOrderEmailOnce(opts: {
       .maybeSingle();
     if (prior) return { sent: false, reason: 'duplicate' };
 
-    const { data: claim } = await supabase
+    const { data: claim, error: claimErr } = await supabase
       .from('communications')
       .insert({ order_id: orderId, customer_email: customerEmail, type, subject: rendered.subject, status: 'queued' })
       .select('id')
       .single();
+    if (claimErr) {
+      // 23505 = the partial unique index fired: a concurrent or prior claim won.
+      // Treat as a duplicate and do NOT send a second email.
+      if (claimErr.code === '23505') return { sent: false, reason: 'duplicate' };
+      console.error('[transactional] claim insert failed', { orderId, type, error: claimErr });
+      return { sent: false, reason: 'error' };
+    }
 
     const res = await sendEmail({ to: customerEmail, subject: rendered.subject, html: rendered.html, text: rendered.text });
 
