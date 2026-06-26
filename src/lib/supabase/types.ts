@@ -1420,7 +1420,7 @@ export type Database = {
       drop_feature_tier: 'hero' | 'supporting';
       comm_channel: 'email' | 'sms' | 'push' | 'webhook';
       comm_direction: 'outbound' | 'inbound';
-      comm_type: 'rx_reminder' | 'rx_approved' | 'rx_rejected' | 'order_shipped' | 'return_approved' | 'return_shipped' | 'welcome' | 'drop_launch' | 'review_request' | 'rx_escalation' | 'waitlist_notify' | 'membership_welcome' | 'slot_unlocked' | 'pair_shipped' | 'expiry_warning' | 'renewal_offer' | 'other';
+      comm_type: 'rx_reminder' | 'rx_received' | 'rx_approved' | 'rx_rejected' | 'order_shipped' | 'return_approved' | 'return_shipped' | 'welcome' | 'drop_launch' | 'review_request' | 'rx_escalation' | 'waitlist_notify' | 'membership_welcome' | 'slot_unlocked' | 'pair_shipped' | 'expiry_warning' | 'renewal_offer' | 'other';
       comm_provider: 'resend' | 'shopify' | 'twilio';
       comm_status: 'queued' | 'sent' | 'delivered' | 'bounced' | 'failed';
       shipment_direction: 'outbound' | 'return_inbound' | 'replacement_outbound';
