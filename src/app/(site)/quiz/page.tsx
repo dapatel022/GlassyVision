@@ -303,7 +303,7 @@ export default function QuizPage() {
         >
           ← Back
         </button>
-        <span className="font-mono text-xs font-bold text-tortoise">
+        <span className="font-mono text-xs font-bold text-accent">
           STEP {stepIndex + 1} OF {QUIZ_STEPS.length}
         </span>
       </header>

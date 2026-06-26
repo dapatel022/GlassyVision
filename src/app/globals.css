@@ -10,7 +10,7 @@
   --color-accent-light: #2d54b5;
   --color-tortoise: #c9b77a;
   --color-muted: #6a7888;
-  --color-muted-soft: #8a96a4;
+  --color-muted-soft: #5b6675; /* was #8a96a4 (2.7:1); now 5.3:1 on bg-base — WCAG AA */
   --color-line: #dde3ea;
   --color-error: #c9302c;
   --color-success: #2d7a4f;
