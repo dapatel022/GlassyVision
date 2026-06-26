@@ -78,7 +78,7 @@ function enrichedChecks(values: RxTypedValues): AutoCheckResult[] {
     const cyl = parseNum(values[`${eye}Cylinder`]);
     const axisRaw = values[`${eye}Axis`];
     const axis = parseNum(axisRaw);
-    if (cyl !== null && cyl !== 0 && (axis === null || axis === 0) && (!axisRaw || !axisRaw.trim())) {
+    if (cyl !== null && cyl !== 0 && (!axisRaw || !axisRaw.trim())) {
       push(`${eye}Axis`, 'Cylinder is set but axis is missing — an axis is required with cylinder');
     }
     if ((axis !== null && axis !== 0) && (cyl === null || cyl === 0)) {

@@ -32,7 +32,7 @@ export async function sendOrderEmailOnce(opts: {
 
     const { data: claim, error: claimErr } = await supabase
       .from('communications')
-      .insert({ order_id: orderId, customer_email: customerEmail, type, subject: rendered.subject, status: 'queued' })
+      .insert({ order_id: orderId, customer_email: customerEmail, direction: 'outbound' as const, type, subject: rendered.subject, status: 'queued' })
       .select('id')
       .single();
     if (claimErr) {
