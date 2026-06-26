@@ -92,24 +92,30 @@ export default function PdpConfigurator({ product }: PdpConfiguratorProps) {
       {/* Wizard Steps Indicator */}
       <div role="tablist" aria-label="Configurator steps" className="flex border-b border-line pb-4 justify-between font-mono text-[9px] font-bold uppercase tracking-wider text-muted-soft">
         <button
+          id="pdp-tab-frame"
           role="tab"
           aria-selected={step === 'frame'}
+          aria-controls="pdp-panel-frame"
           onClick={() => setStep('frame')}
           className={`pb-1 ${step === 'frame' ? 'border-b border-accent text-accent' : 'hover:text-ink'}`}
         >
           1. Frame Fit
         </button>
         <button
+          id="pdp-tab-lens-type"
           role="tab"
           aria-selected={step === 'lens-type'}
+          aria-controls="pdp-panel-lens-type"
           onClick={() => setStep('lens-type')}
           className={`pb-1 ${step === 'lens-type' ? 'border-b border-accent text-accent' : 'hover:text-ink'}`}
         >
           2. Lens Choice
         </button>
         <button
+          id="pdp-tab-customize"
           role="tab"
           aria-selected={step === 'customize'}
+          aria-controls="pdp-panel-customize"
           onClick={() => setStep('customize')}
           className={`pb-1 ${step === 'customize' ? 'border-b border-accent text-accent' : 'hover:text-ink'}`}
         >
@@ -119,7 +125,7 @@ export default function PdpConfigurator({ product }: PdpConfiguratorProps) {
 
       {/* STEP 1: Color, Size & VTO */}
       {step === 'frame' && (
-        <div className="space-y-5 animate-fade-in-up">
+        <div id="pdp-panel-frame" role="tabpanel" aria-labelledby="pdp-tab-frame" className="space-y-5 animate-fade-in-up">
           <div className="flex items-center gap-2 justify-between">
             <h4 className="font-mono text-xs font-bold uppercase text-ink">Choose Frame Specs</h4>
             <button
@@ -154,7 +160,7 @@ export default function PdpConfigurator({ product }: PdpConfiguratorProps) {
 
       {/* STEP 2: Choose Lens Category */}
       {step === 'lens-type' && (
-        <div className="space-y-4 animate-fade-in-up">
+        <div id="pdp-panel-lens-type" role="tabpanel" aria-labelledby="pdp-tab-lens-type" className="space-y-4 animate-fade-in-up">
           <h4 className="font-mono text-xs font-bold uppercase text-ink">Select Lens Intent</h4>
           <div className="space-y-2.5">
             {/* Category Cards */}
@@ -245,7 +251,7 @@ export default function PdpConfigurator({ product }: PdpConfiguratorProps) {
 
       {/* STEP 3: Customize Options & Add Advisor */}
       {step === 'customize' && (
-        <div className="space-y-6 animate-fade-in-up">
+        <div id="pdp-panel-customize" role="tabpanel" aria-labelledby="pdp-tab-customize" className="space-y-6 animate-fade-in-up">
           <h4 className="font-mono text-xs font-bold uppercase text-ink">Customize Lens Upgrades</h4>
 
           {/* Rx Customizations */}

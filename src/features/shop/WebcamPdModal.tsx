@@ -14,6 +14,7 @@ export default function WebcamPdModal({ isOpen, onClose, onApply }: WebcamPdModa
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   // Calibration state in percentages of container width/height
   const [cardLeft, setCardLeft] = useState(30);
@@ -64,6 +65,17 @@ export default function WebcamPdModal({ isOpen, onClose, onApply }: WebcamPdModa
       if (videoEl) videoEl.srcObject = null;
     };
   }, [isOpen]);
+
+  // Move focus into the dialog when it opens (aria-modal hides surrounding content
+  // from the AT tree, so focus must be inside the dialog on open). Also wire
+  // Escape at the document level so it works regardless of which child holds focus.
+  useEffect(() => {
+    if (!isOpen) return;
+    dialogRef.current?.focus();
+    const handleKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -138,7 +150,14 @@ export default function WebcamPdModal({ isOpen, onClose, onApply }: WebcamPdModa
       onTouchMove={handleTouchMove}
       onTouchEnd={handleMouseUp}
     >
-      <div role="dialog" aria-label="Webcam PD measurement tool" aria-modal="true" className="bg-white border border-line rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-label="Webcam PD measurement tool"
+        aria-modal="true"
+        tabIndex={-1}
+        className="bg-white border border-line rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col focus:outline-none"
+      >
         {/* Modal Header */}
         <div className="px-6 py-4 border-b border-line flex items-center justify-between bg-base">
           <div>

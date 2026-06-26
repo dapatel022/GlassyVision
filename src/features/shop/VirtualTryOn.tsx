@@ -23,6 +23,7 @@ export default function VirtualTryOn({ isOpen, onClose, product }: VirtualTryOnP
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   // Manual transform adjustments for static/photo mode
   const [scale, setScale] = useState(100);
@@ -73,6 +74,17 @@ export default function VirtualTryOn({ isOpen, onClose, product }: VirtualTryOnP
       if (userPhoto?.startsWith('blob:')) URL.revokeObjectURL(userPhoto);
     };
   }, [userPhoto]);
+
+  // Move focus into the dialog when it opens (aria-modal hides surrounding content
+  // from the AT tree, so focus must be inside the dialog on open). Also wire
+  // Escape at the document level so it works regardless of which child holds focus.
+  useEffect(() => {
+    if (!isOpen) return;
+    dialogRef.current?.focus();
+    const handleKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -221,7 +233,14 @@ export default function VirtualTryOn({ isOpen, onClose, product }: VirtualTryOnP
       onTouchMove={handleTouchMove}
       onTouchEnd={handleMouseUp}
     >
-      <div role="dialog" aria-label="AR Virtual try-on" aria-modal="true" className="bg-white border border-line rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col h-[90vh] md:h-auto">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-label="AR Virtual try-on"
+        aria-modal="true"
+        tabIndex={-1}
+        className="bg-white border border-line rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col h-[90vh] md:h-auto focus:outline-none"
+      >
         {/* Header */}
         <div className="px-6 py-4 border-b border-line flex items-center justify-between bg-base">
           <div>

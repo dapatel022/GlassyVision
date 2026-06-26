@@ -11,7 +11,8 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
         Skip to main content
       </a>
       <SiteHeader />
-      <main id="main-content" className="min-h-[calc(100vh-4rem)]">{children}</main>
+      {/* tabIndex={-1} lets the skip link move focus (not just scroll) in Chromium/Safari */}
+      <main id="main-content" tabIndex={-1} className="min-h-[calc(100vh-4rem)] focus:outline-none">{children}</main>
       <SiteFooter />
     </>
   );
