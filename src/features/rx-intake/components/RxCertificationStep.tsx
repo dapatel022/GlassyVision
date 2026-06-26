@@ -44,10 +44,11 @@ export default function RxCertificationStep({ onSubmit, submitting, errors, warn
       </label>
 
       <div className="mb-6">
-        <label className="block text-xs font-sans font-bold text-muted-soft uppercase tracking-wider mb-1">
+        <label htmlFor="rx-expiration-date" className="block text-xs font-sans font-bold text-muted-soft uppercase tracking-wider mb-1">
           Rx Expiration Date (optional)
         </label>
         <input
+          id="rx-expiration-date"
           type="date"
           value={expirationDate}
           onChange={(e) => setExpirationDate(e.target.value)}

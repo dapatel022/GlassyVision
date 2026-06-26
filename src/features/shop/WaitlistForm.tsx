@@ -47,7 +47,9 @@ export default function WaitlistForm({ dropSlug }: WaitlistFormProps) {
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4 text-left max-w-md mx-auto">
       <div className="flex flex-col sm:flex-row gap-2">
+        <label htmlFor="waitlist-email" className="sr-only">Email address</label>
         <input
+          id="waitlist-email"
           type="email"
           required
           value={email}
@@ -80,19 +82,29 @@ export default function WaitlistForm({ dropSlug }: WaitlistFormProps) {
         </label>
 
         {showPhone && (
-          <input
-            type="tel"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="+1 (555) 000-0000"
-            className="w-full px-4 py-3 border border-line rounded-lg text-sm font-mono bg-white focus:outline-none focus:border-accent animate-fade-in-up"
-            disabled={status === 'submitting' || status === 'success'}
-          />
+          <>
+            <label htmlFor="waitlist-phone" className="sr-only">Phone number (optional)</label>
+            <input
+              id="waitlist-phone"
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="+1 (555) 000-0000"
+              className="w-full px-4 py-3 border border-line rounded-lg text-sm font-mono bg-white focus:outline-none focus:border-accent animate-fade-in-up"
+              disabled={status === 'submitting' || status === 'success'}
+            />
+          </>
         )}
       </div>
 
       {message && (
-        <p className={`text-sm text-center ${status === 'success' ? 'text-success' : 'text-error'}`}>{message}</p>
+        <p
+          role={status === 'error' ? 'alert' : 'status'}
+          aria-live={status === 'error' ? 'assertive' : 'polite'}
+          className={`text-sm text-center ${status === 'success' ? 'text-success' : 'text-error'}`}
+        >
+          {message}
+        </p>
       )}
     </form>
   );

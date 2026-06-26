@@ -32,12 +32,13 @@ export default function AccountLoginPage() {
           <p className="font-serif italic text-muted text-sm mt-2">Your account</p>
         </div>
         {sent ? (
-          <p className="text-center text-sm text-ink">Check your email for a sign-in link.</p>
+          <p role="status" aria-live="polite" className="text-center text-sm text-ink">Check your email for a sign-in link.</p>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
-            <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required
+            <label htmlFor="login-email" className="sr-only">Email address</label>
+            <input id="login-email" type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required
               className="w-full px-4 py-3 bg-white border border-line text-ink font-sans text-sm focus:border-accent focus:ring-2 focus:ring-accent/10 outline-none" />
-            {error && <p className="text-error text-xs font-mono">{error}</p>}
+            {error && <p role="alert" className="text-error text-xs font-mono">{error}</p>}
             <button type="submit" disabled={loading}
               className="w-full py-3 bg-ink text-base font-sans font-bold text-xs tracking-widest uppercase disabled:opacity-50">
               {loading ? 'Sending...' : 'Email me a sign-in link'}

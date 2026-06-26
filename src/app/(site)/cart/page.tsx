@@ -33,7 +33,7 @@ export default function CartPage() {
   if (!hydrated) {
     return (
       <div className="max-w-3xl mx-auto px-4 py-12">
-        <p className="text-muted font-serif italic">Loading cart…</p>
+        <p role="status" aria-live="polite" className="text-muted font-serif italic">Loading cart…</p>
       </div>
     );
   }
@@ -81,7 +81,7 @@ export default function CartPage() {
       </p>
 
       {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-error/20 rounded-lg">
+        <div role="alert" className="mb-4 p-3 bg-red-50 border border-error/20 rounded-lg">
           <p className="text-sm text-error">{error}</p>
         </div>
       )}

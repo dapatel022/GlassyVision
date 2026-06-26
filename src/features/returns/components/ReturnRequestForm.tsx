@@ -87,10 +87,11 @@ export default function ReturnRequestForm({ orderDbId, publicOrderId, token, exp
   return (
     <form onSubmit={handleSubmit} className="space-y-5 bg-white p-6 border border-line rounded-xl">
       <div>
-        <label className="block text-xs font-sans font-bold uppercase tracking-wider text-muted-soft mb-1">
+        <label htmlFor="return-line-item" className="block text-xs font-sans font-bold uppercase tracking-wider text-muted-soft mb-1">
           Which item?
         </label>
         <select
+          id="return-line-item"
           value={lineItemId}
           onChange={(e) => setLineItemId(e.target.value)}
           className="w-full px-3 py-2 border border-line rounded-lg text-sm"
@@ -104,10 +105,11 @@ export default function ReturnRequestForm({ orderDbId, publicOrderId, token, exp
       </div>
 
       <div>
-        <label className="block text-xs font-sans font-bold uppercase tracking-wider text-muted-soft mb-1">
+        <label htmlFor="return-reason" className="block text-xs font-sans font-bold uppercase tracking-wider text-muted-soft mb-1">
           What happened?
         </label>
         <select
+          id="return-reason"
           value={reason}
           onChange={(e) => setReason(e.target.value as ReturnReason)}
           className="w-full px-3 py-2 border border-line rounded-lg text-sm"
@@ -122,10 +124,11 @@ export default function ReturnRequestForm({ orderDbId, publicOrderId, token, exp
       </div>
 
       <div>
-        <label className="block text-xs font-sans font-bold uppercase tracking-wider text-muted-soft mb-1">
+        <label htmlFor="return-detail" className="block text-xs font-sans font-bold uppercase tracking-wider text-muted-soft mb-1">
           Tell us more (optional)
         </label>
         <textarea
+          id="return-detail"
           value={reasonDetail}
           onChange={(e) => setReasonDetail(e.target.value)}
           rows={4}
@@ -135,9 +138,9 @@ export default function ReturnRequestForm({ orderDbId, publicOrderId, token, exp
       </div>
 
       <div>
-        <label className="block text-xs font-sans font-bold uppercase tracking-wider text-muted-soft mb-1">
+        <p className="text-xs font-sans font-bold uppercase tracking-wider text-muted-soft mb-1">
           What would you like?
-        </label>
+        </p>
         <div className="flex gap-2">
           {RESOLUTIONS.map((r) => (
             <button

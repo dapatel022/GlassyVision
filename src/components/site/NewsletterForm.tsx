@@ -58,7 +58,13 @@ export default function NewsletterForm() {
         </button>
       </div>
       {message && (
-        <p className={`text-xs ${status === 'success' ? 'text-success' : 'text-error'}`}>{message}</p>
+        <p
+          role={status === 'error' ? 'alert' : 'status'}
+          aria-live={status === 'error' ? 'assertive' : 'polite'}
+          className={`text-xs ${status === 'success' ? 'text-success' : 'text-error'}`}
+        >
+          {message}
+        </p>
       )}
     </form>
   );
