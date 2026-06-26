@@ -55,3 +55,16 @@ body {
 .animate-float { animation: float 6s ease-in-out infinite; }
 .animate-fade-in-up { animation: fade-in-up 0.8s ease-out forwards; }
 .animate-slide { animation: slide 40s linear infinite; }
+
+/* Screen-reader-only utility (used by skip link in site layout) */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}

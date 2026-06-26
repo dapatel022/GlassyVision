@@ -69,12 +69,12 @@ export default async function HomePage() {
         <div className="bg-white border border-line rounded-2xl p-6 md:p-8 grid grid-cols-1 md:grid-cols-3 gap-8 shadow-sm">
           <div className="space-y-2">
             <p className="text-[10px] font-sans font-bold uppercase tracking-wider text-muted-soft">Drop Allocation</p>
-            <h3 className="font-mono text-2xl font-bold text-ink">500 Pieces Total</h3>
+            <p className="font-mono text-2xl font-bold text-ink">500 Pieces Total</p>
             <p className="text-xs text-muted font-serif italic">Strictly limited. No restocks planned.</p>
           </div>
           <div className="space-y-2 border-t md:border-t-0 md:border-l border-line pt-6 md:pt-0 md:pl-8">
             <p className="text-[10px] font-sans font-bold uppercase tracking-wider text-muted-soft">Waitlist</p>
-            <h3 className="font-mono text-2xl font-bold text-accent">Early Access</h3>
+            <p className="font-mono text-2xl font-bold text-accent">Early Access</p>
             <p className="text-xs text-muted font-serif italic">Join to get access 24 hours before the public drop.</p>
           </div>
           <div className="space-y-2 border-t md:border-t-0 md:border-l border-line pt-6 md:pt-0 md:pl-8">
@@ -99,22 +99,22 @@ export default async function HomePage() {
           <div className="flex-1 grid grid-cols-2 gap-4 w-full">
             <div className="bg-white/60 backdrop-blur border border-line rounded-xl p-5 shadow-sm space-y-1.5">
               <span className="text-xl block">🪚</span>
-              <h4 className="font-sans font-bold text-xs uppercase text-ink">Acetate Sculpting</h4>
+              <h3 className="font-sans font-bold text-xs uppercase text-ink">Acetate Sculpting</h3>
               <p className="text-[10px] text-muted-soft leading-normal">Milled from organic wood-pulp cotton plates, ensuring hypoallergenic comfort.</p>
             </div>
             <div className="bg-white/60 backdrop-blur border border-line rounded-xl p-5 shadow-sm space-y-1.5">
               <span className="text-xl block">📐</span>
-              <h4 className="font-sans font-bold text-xs uppercase text-ink">5-Barrel Hinges</h4>
+              <h3 className="font-sans font-bold text-xs uppercase text-ink">5-Barrel Hinges</h3>
               <p className="text-[10px] text-muted-soft leading-normal">Dual pin hand-riveted hinges for indestructible temple alignments.</p>
             </div>
             <div className="bg-white/60 backdrop-blur border border-line rounded-xl p-5 shadow-sm space-y-1.5">
               <span className="text-xl block">🩺</span>
-              <h4 className="font-sans font-bold text-xs uppercase text-ink">Lab Fitted</h4>
+              <h3 className="font-sans font-bold text-xs uppercase text-ink">Lab Fitted</h3>
               <p className="text-[10px] text-muted-soft leading-normal">Every lens is cut and aligned to your prescription, then QC-checked before it ships.</p>
             </div>
             <div className="bg-white/60 backdrop-blur border border-line rounded-xl p-5 shadow-sm space-y-1.5">
               <span className="text-xl block">📦</span>
-              <h4 className="font-sans font-bold text-xs uppercase text-ink">Unique drops</h4>
+              <h3 className="font-sans font-bold text-xs uppercase text-ink">Unique drops</h3>
               <p className="text-[10px] text-muted-soft leading-normal">Allocated inventory batching to avoid supply surpluses and waste.</p>
             </div>
           </div>
