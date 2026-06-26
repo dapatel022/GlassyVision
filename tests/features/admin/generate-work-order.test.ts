@@ -95,6 +95,65 @@ describe('generateWorkOrder', () => {
     }
   });
 
+  it('carries prism fields from rx_files into the work order audit metadata', async () => {
+    const auditInsert = vi.fn(() => Promise.resolve({ error: null }));
+    const workOrderInsert = vi.fn(() => ({
+      select: vi.fn(() => ({
+        single: vi.fn(() => Promise.resolve({ data: { id: 'wo-2', work_order_number: 'WO-202604-002' }, error: null })),
+      })),
+    }));
+    const workOrdersSelect = vi.fn(() => ({
+      eq: vi.fn(() => ({ maybeSingle: vi.fn(() => Promise.resolve({ data: null, error: null })) })),
+      gte: vi.fn(() => Promise.resolve({ data: [], error: null, count: 0 })),
+    }));
+
+    // rx_files row includes prism values
+    const rxFileSelectWithPrism = vi.fn(() => ({
+      eq: vi.fn(() => ({
+        single: vi.fn(() => Promise.resolve({
+          data: {
+            id: 'rx-2', order_id: 'order-2', line_item_id: 'line-2',
+            storage_path: 'rx/2.jpg', deleted_at: null,
+            typed_od_sphere: '-2.00', typed_od_cylinder: '-0.75', typed_od_axis: '90',
+            typed_os_sphere: '-1.50', typed_os_cylinder: '-0.50', typed_os_axis: '85',
+            typed_od_add: null, typed_os_add: null,
+            typed_od_prism: '2', typed_od_base: 'in',
+            typed_os_prism: null, typed_os_base: null,
+            typed_pd: '63', typed_pd_type: 'binocular',
+            rx_reviews: [{ decision: 'approved', reviewed_at: '2026-05-01T00:00:00Z' }],
+            order_line_items: {
+              id: 'line-2', sku: 'GV-002-BLACK-M', product_title: 'Test Frame 2',
+              frame_shape: 'oval', frame_color: 'tortoise', frame_size: 'L',
+            },
+          },
+          error: null,
+        })),
+      })),
+    }));
+
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'rx_files') return { select: rxFileSelectWithPrism };
+      if (table === 'orders') return { select: () => ({ eq: () => ({ single: () => Promise.resolve({ data: { billing_country: 'us', shipping_address: { country_code: 'US' } }, error: null }) }) }) };
+      if (table === 'work_orders') return { insert: workOrderInsert, select: workOrdersSelect };
+      if (table === 'lab_jobs') return { insert: vi.fn(() => Promise.resolve({ error: null })) };
+      if (table === 'audit_log') return { insert: auditInsert };
+      if (table === 'subscription_redemptions') return { update: () => ({ eq: () => ({ select: () => Promise.resolve({ data: [], error: null }) }) }) };
+      return {};
+    });
+
+    const { generateWorkOrder } = await import('@/features/admin/actions/generate-work-order');
+    const result = await generateWorkOrder('rx-2');
+
+    expect(result.success).toBe(true);
+    expect(auditInsert).toHaveBeenCalledTimes(1);
+    const auditArg = (auditInsert.mock.calls as unknown as Array<[Record<string, unknown>]>)[0][0];
+    const afterData = auditArg.after_data as Record<string, unknown>;
+    expect(afterData.typed_od_prism).toBe('2');
+    expect(afterData.typed_od_base).toBe('in');
+    expect(afterData.typed_os_prism).toBeNull();
+    expect(afterData.typed_os_base).toBeNull();
+  });
+
   it('refuses to generate a work order for a non-US/CA shipping destination', async () => {
     const workOrderInsert = vi.fn();
     mockFrom.mockImplementation((table: string) => {

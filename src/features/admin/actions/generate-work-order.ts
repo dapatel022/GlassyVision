@@ -40,6 +40,7 @@ export async function generateWorkOrder(rxFileId: string): Promise<GenerateWorkO
       id, order_id, line_item_id, storage_path, deleted_at, rx_expiration_date,
       typed_od_sphere, typed_od_cylinder, typed_od_axis, typed_od_add,
       typed_os_sphere, typed_os_cylinder, typed_os_axis, typed_os_add,
+      typed_od_prism, typed_od_base, typed_os_prism, typed_os_base,
       typed_pd, typed_pd_type,
       rx_reviews (decision, reviewed_at),
       order_line_items!inner (id, sku, product_title, frame_shape, frame_color, frame_size)
@@ -157,7 +158,22 @@ export async function generateWorkOrder(rxFileId: string): Promise<GenerateWorkO
     action: 'work_order_generated',
     entity_type: 'work_orders',
     entity_id: inserted.id,
-    after_data: { work_order_number: inserted.work_order_number, rx_file_id: rxFile.id } as unknown as Json,
+    after_data: {
+      work_order_number: inserted.work_order_number,
+      rx_file_id: rxFile.id,
+      typed_od_sphere: rxFile.typed_od_sphere,
+      typed_od_cylinder: rxFile.typed_od_cylinder,
+      typed_od_axis: rxFile.typed_od_axis,
+      typed_od_add: rxFile.typed_od_add,
+      typed_os_sphere: rxFile.typed_os_sphere,
+      typed_os_cylinder: rxFile.typed_os_cylinder,
+      typed_os_axis: rxFile.typed_os_axis,
+      typed_os_add: rxFile.typed_os_add,
+      typed_od_prism: rxFile.typed_od_prism,
+      typed_od_base: rxFile.typed_od_base,
+      typed_os_prism: rxFile.typed_os_prism,
+      typed_os_base: rxFile.typed_os_base,
+    } as unknown as Json,
   });
   if (auditError) {
     console.error('[generate-work-order] audit_log insert failed', { workOrderId: inserted.id, error: auditError });
