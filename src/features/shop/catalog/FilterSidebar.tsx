@@ -63,6 +63,7 @@ export default function FilterSidebar({ facets }: FilterSidebarProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const qs = searchParams.toString();
+  const priceValue = searchParams.get('price') ?? '';
 
   if (facets.length === 0) return null;
 
@@ -76,7 +77,8 @@ export default function FilterSidebar({ facets }: FilterSidebarProps) {
                 {facet.label}
               </summary>
               <div className="pt-2">
-                <PriceControl />
+                {/* key remounts the control when the URL's price changes elsewhere (pills, Clear all) — URL is the single source of state */}
+                <PriceControl key={priceValue} />
               </div>
             </details>
           );
