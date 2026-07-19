@@ -242,3 +242,15 @@ export const COLLECTION_PRODUCTS_QUERY = `
     }
   }
 `;
+
+export const MENU_QUERY = `
+  query Menu($handle: String!) {
+    menu(handle: $handle) {
+      items {
+        id
+        title
+        url
+      }
+    }
+  }
+`;
