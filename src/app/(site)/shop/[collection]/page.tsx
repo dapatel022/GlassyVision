@@ -49,7 +49,7 @@ export async function generateMetadata({ params, searchParams }: PlpProps) {
   const { collection } = await params;
   const qs = toQueryString(await searchParams);
   const res = await getPlpData(collection, qs);
-  const title = res.collection?.title ?? 'Shop';
+  const title = res.collection?.title ?? (collection === 'all' ? 'All Frames' : 'Shop');
   return {
     title,
     description:
@@ -66,6 +66,7 @@ export default async function CollectionPage({ params, searchParams }: PlpProps)
 
   // "all" works even before the merchant creates an automated all-collection:
   // fall back to the plain product list (no facets) rather than 404ing.
+  // TODO(catalog): remove the 48-product cap once a channel-published automated "all" collection exists — then facets + paging apply here too.
   if (!res.collection && handle === 'all') {
     const products = await getProducts(48);
     res = {
