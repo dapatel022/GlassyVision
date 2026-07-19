@@ -40,6 +40,7 @@ function parsePrice(raw: string): ProductFilterInput | null {
 }
 
 function paramToFilter(key: string, value: string): ProductFilterInput | null {
+  if (value === '') return null;
   if (key === 'available') return value === 'true' ? { available: true } : null;
   if (key === 'vendor') return { productVendor: value };
   if (key === 'ptype') return { productType: value };

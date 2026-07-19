@@ -21,6 +21,11 @@ describe('parseCatalogSearchParams', () => {
     expect(q.after).toBeNull();
   });
 
+  it('ignores empty-string filter values', () => {
+    const q = parseCatalogSearchParams({ vendor: '', ptype: '', tag: '', 'opt.color': '', 'm.custom.gender': '' });
+    expect(q.filters).toEqual([]);
+  });
+
   it('maps every documented param kind to its ProductFilter', () => {
     const q = parseCatalogSearchParams({
       vendor: 'GlassyVision',
