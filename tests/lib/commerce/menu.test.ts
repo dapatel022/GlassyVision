@@ -65,6 +65,21 @@ describe('transformMenuUrl', () => {
       external: false,
     });
   });
+
+  it('rejects dangerous URL schemes; allows http(s)/mailto/tel externals', async () => {
+    const { transformMenuUrl } = await import('@/lib/commerce/menu');
+    expect(transformMenuUrl('javascript:alert(1)', DOMAIN)).toBeNull();
+    expect(transformMenuUrl('data:text/html,x', DOMAIN)).toBeNull();
+    expect(transformMenuUrl('vbscript:x', DOMAIN)).toBeNull();
+    expect(transformMenuUrl('mailto:hello@glassyvision.com', DOMAIN)).toEqual({
+      href: 'mailto:hello@glassyvision.com',
+      external: true,
+    });
+    expect(transformMenuUrl('tel:+15551234567', DOMAIN)).toEqual({
+      href: 'tel:+15551234567',
+      external: true,
+    });
+  });
 });
 
 describe('getMenu', () => {

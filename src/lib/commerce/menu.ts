@@ -49,6 +49,12 @@ export function transformMenuUrl(
   } catch {
     return null;
   }
+
+  // Merchant menu URLs are untrusted input: only web/contact schemes may
+  // reach an <a href> — javascript:/data:/etc. would be stored XSS.
+  const SAFE_PROTOCOLS = ['https:', 'http:', 'mailto:', 'tel:'];
+  if (!SAFE_PROTOCOLS.includes(parsed.protocol)) return null;
+
   if (parsed.host !== storeDomain) {
     return { href: absolute, external: true };
   }
