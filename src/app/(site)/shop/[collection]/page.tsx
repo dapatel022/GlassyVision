@@ -97,7 +97,9 @@ export default async function CollectionPage({ params, searchParams }: PlpProps)
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12">
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListJsonLd) }}
+        // JSON.stringify does not escape "<" — a catalog string containing
+        // "</script>" would break out of this tag. < keeps the JSON valid.
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListJsonLd).replace(/</g, '\\u003c') }}
       />
 
       <header className="space-y-3">
