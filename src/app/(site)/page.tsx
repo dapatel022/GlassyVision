@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { getProducts } from '@/lib/commerce/shopify';
+import { getHomepageContent } from '@/lib/commerce/content';
 import { createAdminClient } from '@/lib/supabase/admin';
 import ProductCard from '@/features/shop/ProductCard';
 import WaitlistForm from '@/features/shop/WaitlistForm';
@@ -15,6 +16,15 @@ export default async function HomePage() {
   } catch {
     // Shopify not yet configured — render placeholder state
   }
+
+  const content = await getHomepageContent();
+
+  const tickerPhrases = content.tickerPhrases ?? [
+    'Designed in Syracuse · Hand-finished in India',
+    'Cellulose Acetate & Pure Titanium',
+    'Small-Batch Limited Runs Only',
+    'Prescription Ready Optics',
+  ];
 
   // Resolve the current drop slug instead of hardcoding 'drop-01' (which 404s
   // the waitlist CTA if the first drop is seeded under a different slug). Pick the
@@ -38,29 +48,22 @@ export default async function HomePage() {
     <div className="space-y-16 pb-12">
       {/* Editorial Hero Showcase */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 pt-12 md:pt-20">
-        <HeroShowcase />
+        <HeroShowcase slides={content.slides ?? undefined} badgeText={content.badgeText ?? undefined} />
       </section>
 
       {/* Infinite Scrolling Ticker */}
       <div className="bg-ink text-white py-4 overflow-hidden border-y border-line">
         <div className="flex whitespace-nowrap animate-slide text-xs font-mono tracking-[4px] uppercase font-bold text-base-deeper">
-          <span className="mx-8">Designed in Syracuse · Hand-finished in India</span>
-          <span className="mx-8 text-accent">•</span>
-          <span className="mx-8">Cellulose Acetate & Pure Titanium</span>
-          <span className="mx-8 text-accent">•</span>
-          <span className="mx-8">Small-Batch Limited Runs Only</span>
-          <span className="mx-8 text-accent">•</span>
-          <span className="mx-8">Prescription Ready Optics</span>
-          <span className="mx-8 text-accent">•</span>
-          {/* duplicate for infinite illusion */}
-          <span className="mx-8">Designed in Syracuse · Hand-finished in India</span>
-          <span className="mx-8 text-accent">•</span>
-          <span className="mx-8">Cellulose Acetate & Pure Titanium</span>
-          <span className="mx-8 text-accent">•</span>
-          <span className="mx-8">Small-Batch Limited Runs Only</span>
-          <span className="mx-8 text-accent">•</span>
-          <span className="mx-8">Prescription Ready Optics</span>
-          <span className="mx-8 text-accent">•</span>
+          {[0, 1].map((run) => (
+            <span key={run} className="inline-flex">
+              {tickerPhrases.map((phrase, i) => (
+                <span key={`${run}-${i}`} className="inline-flex items-center">
+                  <span className="mx-8">{phrase}</span>
+                  <span className="mx-8 text-accent" aria-hidden="true">•</span>
+                </span>
+              ))}
+            </span>
+          ))}
         </div>
       </div>
 

@@ -3,22 +3,10 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import type { HeroSlide } from '@/lib/commerce/content';
 
-interface ShowcaseItem {
-  id: string;
-  handle: string;
-  title: string;
-  price: string;
-  colorName: string;
-  colorHex: string; // for the swatch
-  imageUrl: string;
-  description: string;
-  tag: string;
-}
-
-const SHOWCASE_ITEMS: ShowcaseItem[] = [
+const SHOWCASE_ITEMS: HeroSlide[] = [
   {
-    id: '1',
     handle: 'gv-01-archetype',
     title: 'GV-01 Archetype',
     price: '145',
@@ -29,7 +17,6 @@ const SHOWCASE_ITEMS: ShowcaseItem[] = [
     tag: 'Drop N° 01 · Best Seller'
   },
   {
-    id: '2',
     handle: 'gv-02-linear',
     title: 'GV-02 Linear',
     price: '185',
@@ -40,7 +27,6 @@ const SHOWCASE_ITEMS: ShowcaseItem[] = [
     tag: 'Drop N° 01 · Tech Focus'
   },
   {
-    id: '3',
     handle: 'gv-03-voyager',
     title: 'GV-03 Voyager Sun',
     price: '160',
@@ -51,7 +37,6 @@ const SHOWCASE_ITEMS: ShowcaseItem[] = [
     tag: 'Drop N° 01 · Limited Edition'
   },
   {
-    id: '4',
     handle: 'gv-04-editor',
     title: 'GV-04 Editor',
     price: '150',
@@ -63,9 +48,15 @@ const SHOWCASE_ITEMS: ShowcaseItem[] = [
   }
 ];
 
-export default function HeroShowcase() {
+interface HeroShowcaseProps {
+  slides?: HeroSlide[];
+  badgeText?: string;
+}
+
+export default function HeroShowcase({ slides, badgeText }: HeroShowcaseProps) {
+  const items = slides && slides.length > 0 ? slides : SHOWCASE_ITEMS;
   const [activeIdx, setActiveIdx] = useState(0);
-  const activeItem = SHOWCASE_ITEMS[activeIdx];
+  const activeItem = items[Math.min(activeIdx, items.length - 1)];
   const [fadeState, setFadeState] = useState<'in' | 'out'>('in');
 
   function handleSelect(idx: number) {
@@ -104,9 +95,9 @@ export default function HeroShowcase() {
         <div className="flex items-center gap-4 pt-4">
           <span className="text-xs font-mono text-muted-soft uppercase tracking-wider">Select Style:</span>
           <div className="flex items-center gap-3">
-            {SHOWCASE_ITEMS.map((item, idx) => (
+            {items.map((item, idx) => (
               <button
-                key={item.id}
+                key={item.handle}
                 onClick={() => handleSelect(idx)}
                 aria-pressed={activeIdx === idx}
                 aria-label={`Select ${item.title}`}
@@ -160,7 +151,7 @@ export default function HeroShowcase() {
           {/* Floating Badge */}
           <div className="absolute top-6 right-6 bg-white/90 backdrop-blur border border-line rounded-full px-4 py-1.5 shadow-sm">
             <span className="font-mono text-[9px] font-bold uppercase tracking-wider text-accent">
-              Drop N° 01 · Hand-Finished
+              {badgeText ?? 'Drop N° 01 · Hand-Finished'}
             </span>
           </div>
         </div>
