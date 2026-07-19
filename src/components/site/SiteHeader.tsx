@@ -38,7 +38,7 @@ export default function SiteHeader({ navLinks }: SiteHeaderProps) {
         <nav className="hidden md:flex items-center gap-8">
           {navLinks.map((l) => (
             <NavItem
-              key={l.href}
+              key={`${l.href}-${l.label}`}
               link={l}
               className="font-sans text-xs font-bold uppercase tracking-wider text-ink hover:text-accent transition-colors"
             />
@@ -87,7 +87,7 @@ export default function SiteHeader({ navLinks }: SiteHeaderProps) {
           <nav className="flex flex-col p-4 gap-3">
             {navLinks.map((l) => (
               <NavItem
-                key={l.href}
+                key={`${l.href}-${l.label}`}
                 link={l}
                 onClick={() => setMobileOpen(false)}
                 className="font-sans text-xs font-bold uppercase tracking-wider text-ink py-2"

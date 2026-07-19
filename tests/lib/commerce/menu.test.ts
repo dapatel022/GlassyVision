@@ -26,6 +26,18 @@ describe('transformMenuUrl', () => {
     expect(t(`https://${DOMAIN}/quiz`)).toEqual({ href: '/quiz', external: false });
   });
 
+  it('matches the store domain case-insensitively', async () => {
+    const { transformMenuUrl } = await import('@/lib/commerce/menu');
+    expect(transformMenuUrl(`https://${DOMAIN.toUpperCase()}/collections/optical`, DOMAIN)).toEqual({
+      href: '/shop/optical',
+      external: false,
+    });
+    expect(transformMenuUrl(`https://${DOMAIN}/collections/optical`, DOMAIN.toUpperCase())).toEqual({
+      href: '/shop/optical',
+      external: false,
+    });
+  });
+
   it('preserves query strings on same-store links', async () => {
     const { transformMenuUrl } = await import('@/lib/commerce/menu');
     expect(transformMenuUrl(`https://${DOMAIN}/collections/all?sort=newest`, DOMAIN)).toEqual({

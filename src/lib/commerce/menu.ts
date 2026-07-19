@@ -55,7 +55,7 @@ export function transformMenuUrl(
   const SAFE_PROTOCOLS = ['https:', 'http:', 'mailto:', 'tel:'];
   if (!SAFE_PROTOCOLS.includes(parsed.protocol)) return null;
 
-  if (parsed.host !== storeDomain) {
+  if (parsed.host !== storeDomain.toLowerCase()) {
     return { href: absolute, external: true };
   }
   return { href: mapPath(parsed.pathname) + parsed.search, external: false };
