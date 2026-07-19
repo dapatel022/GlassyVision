@@ -254,3 +254,41 @@ export const MENU_QUERY = `
     }
   }
 `;
+
+export const HERO_SLIDES_QUERY = `
+  query HeroSlides {
+    metaobjects(type: "hero_slide", first: 12) {
+      edges {
+        node {
+          fields {
+            key
+            value
+            reference {
+              ... on Product {
+                handle
+                title
+                description
+                priceRange { minVariantPrice { amount } }
+                featuredImage { url }
+              }
+              ... on MediaImage {
+                image { url }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
+export const HOMEPAGE_QUERY = `
+  query Homepage {
+    metaobject(handle: { type: "homepage", handle: "main" }) {
+      fields {
+        key
+        value
+      }
+    }
+  }
+`;
