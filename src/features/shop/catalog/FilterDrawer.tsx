@@ -11,20 +11,26 @@ interface FilterDrawerProps {
 export default function FilterDrawer({ activeCount, children }: FilterDrawerProps) {
   const [open, setOpen] = useState(false);
   const closeRef = useRef<HTMLButtonElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!open) return;
     closeRef.current?.focus();
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') setOpen(false);
-    }
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setOpen(false); }
     document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevOverflow;
+      triggerRef.current?.focus();
+    };
   }, [open]);
 
   return (
     <div className="lg:hidden">
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen(true)}
         className="text-[11px] font-mono font-bold uppercase tracking-wider text-ink border border-line rounded-lg px-4 py-2 hover:border-accent transition-colors"
