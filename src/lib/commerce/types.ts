@@ -9,6 +9,7 @@ export interface ShopifyProduct {
   images: ShopifyImage[];
   variants: ShopifyVariant[];
   metafields?: ShopifyMetafield[];
+  tags?: string[];
 }
 
 export interface ShopifyImage {
@@ -55,4 +56,53 @@ export interface CartLine {
   merchandiseId: string;
   title: string;
   price: string;
+}
+
+// --- Catalog (collections + faceted filtering) ---
+
+export type SearchParamsRecord = Record<string, string | string[] | undefined>;
+
+export type ProductFilterInput =
+  | { available: boolean }
+  | { productVendor: string }
+  | { productType: string }
+  | { tag: string }
+  | { price: { min?: number; max?: number } }
+  | { variantOption: { name: string; value: string } }
+  | { productMetafield: { namespace: string; key: string; value: string } };
+
+export interface ShopifyCollection {
+  id: string;
+  handle: string;
+  title: string;
+  description: string;
+  image: ShopifyImage | null;
+}
+
+export interface CatalogFacetValue {
+  id: string;
+  label: string;
+  count: number;
+  /** URL param pair this value toggles; null when unmappable (skip rendering). */
+  param: { key: string; value: string } | null;
+}
+
+export interface CatalogFacet {
+  id: string;
+  label: string;
+  /** Storefront filter type: 'LIST' | 'PRICE_RANGE' | 'BOOLEAN' */
+  type: string;
+  values: CatalogFacetValue[];
+}
+
+export interface CatalogPageInfo {
+  hasNextPage: boolean;
+  endCursor: string | null;
+}
+
+export interface CollectionProductsResult {
+  collection: ShopifyCollection | null;
+  products: ShopifyProduct[];
+  facets: CatalogFacet[];
+  pageInfo: CatalogPageInfo;
 }
