@@ -17,6 +17,15 @@ export default function LoadMore({ collectionHandle, queryString, initialPageInf
   const [pageInfo, setPageInfo] = useState(initialPageInfo);
   const [loading, setLoading] = useState(false);
 
+  // Reset appended pages when the filter/sort context changes — the parent
+  // re-renders us with a new queryString but React keeps the instance.
+  const [prevQs, setPrevQs] = useState(queryString);
+  if (prevQs !== queryString) {
+    setPrevQs(queryString);
+    setPages([]);
+    setPageInfo(initialPageInfo);
+  }
+
   if (!pageInfo.hasNextPage && pages.length === 0) return null;
 
   async function onLoadMore() {
