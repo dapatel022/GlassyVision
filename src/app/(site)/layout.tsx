@@ -1,7 +1,13 @@
 import SiteHeader from '@/components/site/SiteHeader';
 import SiteFooter from '@/components/site/SiteFooter';
+import { getSiteNav } from '@/lib/commerce/menu';
 
-export default function SiteLayout({ children }: { children: React.ReactNode }) {
+// Refresh the merchant-managed menu on the same cadence as the catalog.
+export const revalidate = 900;
+
+export default async function SiteLayout({ children }: { children: React.ReactNode }) {
+  const navLinks = await getSiteNav();
+
   return (
     <>
       <a
@@ -10,7 +16,7 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
       >
         Skip to main content
       </a>
-      <SiteHeader />
+      <SiteHeader navLinks={navLinks} />
       {/* tabIndex={-1} lets the skip link move focus (not just scroll) in Chromium/Safari */}
       <main id="main-content" tabIndex={-1} className="min-h-[calc(100vh-4rem)] focus:outline-none">{children}</main>
       <SiteFooter />

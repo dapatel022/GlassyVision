@@ -3,15 +3,28 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { useCart } from '@/context/CartContext';
+import type { NavLink } from '@/lib/commerce/menu';
 
-const NAV_LINKS = [
-  { href: '/shop', label: 'Shop' },
-  { href: '/quiz', label: 'Frame Finder' },
-  { href: '/drops', label: 'Drops' },
-  { href: '/story', label: 'Story' },
-];
+interface SiteHeaderProps {
+  navLinks: NavLink[];
+}
 
-export default function SiteHeader() {
+function NavItem({ link, className, onClick }: { link: NavLink; className: string; onClick?: () => void }) {
+  if (link.external) {
+    return (
+      <a href={link.href} className={className} onClick={onClick}>
+        {link.label}
+      </a>
+    );
+  }
+  return (
+    <Link href={link.href} className={className} onClick={onClick}>
+      {link.label}
+    </Link>
+  );
+}
+
+export default function SiteHeader({ navLinks }: SiteHeaderProps) {
   const { count, hydrated } = useCart();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -23,14 +36,12 @@ export default function SiteHeader() {
         </Link>
 
         <nav className="hidden md:flex items-center gap-8">
-          {NAV_LINKS.map((l) => (
-            <Link
+          {navLinks.map((l) => (
+            <NavItem
               key={l.href}
-              href={l.href}
+              link={l}
               className="font-sans text-xs font-bold uppercase tracking-wider text-ink hover:text-accent transition-colors"
-            >
-              {l.label}
-            </Link>
+            />
           ))}
         </nav>
 
@@ -74,15 +85,13 @@ export default function SiteHeader() {
       {mobileOpen && (
         <div className="md:hidden mt-2 border border-line rounded-2xl bg-white/95 backdrop-blur-md shadow-lg overflow-hidden animate-fade-in-up">
           <nav className="flex flex-col p-4 gap-3">
-            {NAV_LINKS.map((l) => (
-              <Link
+            {navLinks.map((l) => (
+              <NavItem
                 key={l.href}
-                href={l.href}
+                link={l}
                 onClick={() => setMobileOpen(false)}
                 className="font-sans text-xs font-bold uppercase tracking-wider text-ink py-2"
-              >
-                {l.label}
-              </Link>
+              />
             ))}
             <Link
               href="/account"
