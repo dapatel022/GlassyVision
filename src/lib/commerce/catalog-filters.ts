@@ -172,7 +172,7 @@ export function mapLegacyShopParams(sp: SearchParamsRecord): string {
     }
   }
 
-  const size = values(sp.size)[0];
+  const size = values(sp.size)[0]?.toLowerCase();
   if (size && LEGACY_SIZE[size]) p.set('opt.size', LEGACY_SIZE[size]);
 
   const sun = values(sp.sun)[0];
@@ -199,7 +199,8 @@ export function buildQuizShopUrl(answers: Record<string, string>): string {
   for (const s of QUIZ_SHAPE_RECOMMENDATION[answers.shape] ?? []) {
     p.append('m.custom.frame_shape', s);
   }
-  if (answers.size && LEGACY_SIZE[answers.size]) p.set('opt.size', LEGACY_SIZE[answers.size]);
+  const size = answers.size?.toLowerCase();
+  if (size && LEGACY_SIZE[size]) p.set('opt.size', LEGACY_SIZE[size]);
 
   const isSun = answers.intent === 'rx_sun' || answers.intent === 'plano_sun';
   p.set('m.custom.lens_intent', isSun ? 'sunglasses' : 'clear-rx');

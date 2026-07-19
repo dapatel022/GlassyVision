@@ -159,6 +159,11 @@ describe('legacy /shop param mapping', () => {
     expect(p.get('opt.size')).toBeNull();
     expect(p.get('m.custom.lens_intent')).toBe('clear-rx');
   });
+
+  it('accepts uppercase legacy size values (quiz emits "M")', () => {
+    const p = new URLSearchParams(mapLegacyShopParams({ size: 'M' }));
+    expect(p.get('opt.size')).toBe('Medium');
+  });
 });
 
 describe('buildQuizShopUrl', () => {
@@ -178,5 +183,10 @@ describe('buildQuizShopUrl', () => {
     expect(p.getAll('m.custom.frame_shape')).toEqual([]);
     expect(p.get('opt.size')).toBe('Small');
     expect(p.get('m.custom.lens_intent')).toBe('clear-rx');
+  });
+
+  it('maps uppercase quiz size answers', () => {
+    const url = buildQuizShopUrl({ shape: 'oval', size: 'L', intent: 'rx_clear' });
+    expect(new URLSearchParams(url.split('?')[1]).get('opt.size')).toBe('Large');
   });
 });
