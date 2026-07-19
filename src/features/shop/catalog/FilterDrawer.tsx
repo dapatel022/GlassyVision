@@ -25,6 +25,9 @@ export default function FilterDrawer({ activeCount, children }: FilterDrawerProp
       document.body.style.overflow = prevOverflow;
       triggerRef.current?.focus();
     };
+    // triggerRef points at the always-mounted trigger button — the "ref value
+    // may have changed by cleanup" warning is a false positive here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   return (
