@@ -16,6 +16,9 @@ export default function FilterDrawer({ activeCount, children }: FilterDrawerProp
   useEffect(() => {
     if (!open) return;
     closeRef.current?.focus();
+    // Capture the trigger node at effect time (it's always mounted) so the
+    // cleanup restores focus without reading the ref post-cleanup.
+    const trigger = triggerRef.current;
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setOpen(false); }
@@ -23,11 +26,8 @@ export default function FilterDrawer({ activeCount, children }: FilterDrawerProp
     return () => {
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = prevOverflow;
-      triggerRef.current?.focus();
+      trigger?.focus();
     };
-    // triggerRef points at the always-mounted trigger button — the "ref value
-    // may have changed by cleanup" warning is a false positive here.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   return (
