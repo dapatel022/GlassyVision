@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { buildQuizShopUrl } from '@/lib/commerce/catalog-filters';
 
 interface QuizStep {
   question: string;
@@ -269,18 +270,7 @@ export default function QuizPage() {
     if (stepIndex < QUIZ_STEPS.length - 1) {
       setStepIndex(stepIndex + 1);
     } else {
-      // Map answers to query parameters for /shop
-      let frameShape = 'any';
-      if (nextAnswers.shape === 'oval') frameShape = 'square,rectangular';
-      if (nextAnswers.shape === 'square') frameShape = 'round,oval';
-      if (nextAnswers.shape === 'heart') frameShape = 'round,aviator';
-      if (nextAnswers.shape === 'diamond') frameShape = 'oval';
-
-      const size = nextAnswers.size;
-      const style = nextAnswers.style;
-      const isSun = nextAnswers.intent === 'rx_sun' || nextAnswers.intent === 'plano_sun' ? 'true' : 'false';
-
-      router.push(`/shop?shape=${frameShape}&size=${size}&style=${style}&sun=${isSun}&quiz=true`);
+      router.push(buildQuizShopUrl(nextAnswers));
     }
   }
 
