@@ -39,6 +39,7 @@ export const PRODUCTS_QUERY = `
           id
           handle
           title
+          tags
           description
           priceRange {
             minVariantPrice {
@@ -80,6 +81,7 @@ export const PRODUCT_BY_HANDLE_QUERY = `
       id
       handle
       title
+      tags
       description
       descriptionHtml
       priceRange {
@@ -154,6 +156,88 @@ export const CART_CREATE_MUTATION = `
       userErrors {
         field
         message
+      }
+    }
+  }
+`;
+
+// Shared product field selection for catalog queries. Includes the metafields
+// the storefront reads for badges and facets.
+const PRODUCT_FIELDS = `
+  id
+  handle
+  title
+  description
+  tags
+  priceRange {
+    minVariantPrice { amount currencyCode }
+  }
+  images(first: 10) {
+    edges { node { url altText width height } }
+  }
+  variants(first: 50) {
+    edges {
+      node {
+        id title sku
+        price { amount }
+        availableForSale
+        selectedOptions { name value }
+      }
+    }
+  }
+  metafields(identifiers: [
+    { namespace: "custom", key: "is_rx_capable" },
+    { namespace: "custom", key: "frame_eye_size" },
+    { namespace: "custom", key: "frame_bridge" },
+    { namespace: "custom", key: "frame_temple_length" },
+    { namespace: "custom", key: "polarized" },
+    { namespace: "custom", key: "frame_shape" },
+    { namespace: "custom", key: "frame_material" },
+    { namespace: "custom", key: "lens_intent" },
+    { namespace: "custom", key: "gender" }
+  ]) { key value namespace }
+`;
+
+export const COLLECTIONS_QUERY = `
+  query Collections($first: Int = 50) {
+    collections(first: $first) {
+      edges {
+        node {
+          id
+          handle
+          title
+          description
+          image { url altText width height }
+        }
+      }
+    }
+  }
+`;
+
+export const COLLECTION_PRODUCTS_QUERY = `
+  query CollectionProducts(
+    $handle: String!
+    $first: Int!
+    $after: String
+    $filters: [ProductFilter!]
+    $sortKey: ProductCollectionSortKeys
+    $reverse: Boolean
+  ) {
+    collection(handle: $handle) {
+      id
+      handle
+      title
+      description
+      image { url altText width height }
+      products(first: $first, after: $after, filters: $filters, sortKey: $sortKey, reverse: $reverse) {
+        filters {
+          id
+          label
+          type
+          values { id label count input }
+        }
+        pageInfo { hasNextPage endCursor }
+        edges { node { ${PRODUCT_FIELDS} } }
       }
     }
   }
