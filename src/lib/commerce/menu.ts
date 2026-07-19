@@ -37,19 +37,20 @@ export function transformMenuUrl(
 ): { href: string; external: boolean } | null {
   if (!url) return null;
 
-  if (url.startsWith('/')) {
+  if (url.startsWith('/') && !url.startsWith('//')) {
     const [path, search = ''] = url.split('?');
     return { href: mapPath(path) + (search ? `?${search}` : ''), external: false };
   }
 
+  const absolute = url.startsWith('//') ? `https:${url}` : url;
   let parsed: URL;
   try {
-    parsed = new URL(url);
+    parsed = new URL(absolute);
   } catch {
     return null;
   }
   if (parsed.host !== storeDomain) {
-    return { href: url, external: true };
+    return { href: absolute, external: true };
   }
   return { href: mapPath(parsed.pathname) + parsed.search, external: false };
 }
@@ -62,8 +63,12 @@ interface MenuResponse {
 export async function getMenu(handle = 'main-menu'): Promise<NavLink[]> {
   try {
     const data = await storefrontFetch<MenuResponse>(MENU_QUERY, { handle });
+    if (!data.menu) {
+      console.warn(`Shopify menu handle not found — header will use default links`);
+      return [];
+    }
     const storeDomain = process.env.SHOPIFY_STORE_DOMAIN ?? '';
-    return (data.menu?.items ?? []).flatMap((item) => {
+    return data.menu.items.flatMap((item) => {
       const t = item.url ? transformMenuUrl(item.url, storeDomain) : null;
       return t ? [{ href: t.href, label: item.title, external: t.external }] : [];
     });

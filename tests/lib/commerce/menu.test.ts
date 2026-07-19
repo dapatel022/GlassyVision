@@ -53,6 +53,18 @@ describe('transformMenuUrl', () => {
     expect(transformMenuUrl('', DOMAIN)).toBeNull();
     expect(transformMenuUrl('not a url at all %%%', DOMAIN)).toBeNull();
   });
+
+  it('treats protocol-relative URLs as external', async () => {
+    const { transformMenuUrl } = await import('@/lib/commerce/menu');
+    expect(transformMenuUrl('//instagram.com/glassyvision', DOMAIN)).toEqual({
+      href: 'https://instagram.com/glassyvision',
+      external: true,
+    });
+    expect(transformMenuUrl(`//${DOMAIN}/collections/optical`, DOMAIN)).toEqual({
+      href: '/shop/optical',
+      external: false,
+    });
+  });
 });
 
 describe('getMenu', () => {
@@ -83,6 +95,15 @@ describe('getMenu', () => {
     expect(await getMenu()).toEqual([]);
     mockStorefrontFetch.mockRejectedValueOnce(new Error('scope missing'));
     expect(await getMenu()).toEqual([]);
+  });
+
+  it('warns when the menu handle is missing (not just on fetch errors)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    mockStorefrontFetch.mockResolvedValueOnce({ menu: null });
+    const { getMenu } = await import('@/lib/commerce/menu');
+    expect(await getMenu()).toEqual([]);
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
   });
 });
 
