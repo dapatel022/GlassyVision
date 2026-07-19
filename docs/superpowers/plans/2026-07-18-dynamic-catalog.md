@@ -1938,7 +1938,9 @@ EOF
 )"
 ```
 
----### Task 7: The PLP route — `/shop/[collection]` with metadata + JSON-LD
+---
+
+### Task 7: The PLP route — `/shop/[collection]` with metadata + JSON-LD
 
 **Files:**
 - Create: `src/features/shop/catalog/Breadcrumbs.tsx`
