@@ -45,7 +45,7 @@ export default function LoadMore({ collectionHandle, queryString, initialPageInf
       {pages.map((products, i) => (
         <ProductGrid key={i} products={products} />
       ))}
-      {pageInfo.hasNextPage && (
+      {pageInfo.hasNextPage && pageInfo.endCursor && (
         <div className="flex justify-center pt-2">
           <button
             type="button"
