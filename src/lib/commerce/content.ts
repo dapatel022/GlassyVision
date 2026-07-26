@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import { storefrontFetch, HERO_SLIDES_QUERY, HOMEPAGE_QUERY, BANNERS_QUERY } from './shopify-storefront';
 import { transformMenuUrl } from './menu';
 
@@ -163,8 +164,12 @@ function mapBanner(node: { fields: FieldNode[] }): (SiteBanner & { order: number
   };
 }
 
-/** Active banners grouped by slot, order-sorted. Error/empty -> {} (slots render nothing). */
-export async function getBanners(): Promise<Record<string, SiteBanner[]>> {
+/**
+ * Active banners grouped by slot, order-sorted. Error/empty -> {} (slots render
+ * nothing). cache() dedupes the layout + page call within one server render —
+ * storefrontFetch is a POST, which Next does not request-memoize on its own.
+ */
+export const getBanners = cache(async (): Promise<Record<string, SiteBanner[]>> => {
   try {
     const data = await storefrontFetch<BannersResponse>(BANNERS_QUERY);
     const grouped: Record<string, (SiteBanner & { order: number })[]> = {};
@@ -182,4 +187,4 @@ export async function getBanners(): Promise<Record<string, SiteBanner[]>> {
     console.warn('Shopify banner metaobjects unavailable — banner slots render nothing', err);
     return {};
   }
-}
+});
