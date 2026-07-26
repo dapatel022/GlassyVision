@@ -1,12 +1,15 @@
 import SiteHeader from '@/components/site/SiteHeader';
 import SiteFooter from '@/components/site/SiteFooter';
+import AnnouncementBar from '@/components/site/AnnouncementBar';
 import { getSiteNav } from '@/lib/commerce/menu';
+import { getBanners } from '@/lib/commerce/content';
 
 // Refresh the merchant-managed menu on the same cadence as the catalog.
 export const revalidate = 900;
 
 export default async function SiteLayout({ children }: { children: React.ReactNode }) {
-  const navLinks = await getSiteNav();
+  const [navLinks, banners] = await Promise.all([getSiteNav(), getBanners()]);
+  const announcement = banners.announcement?.[0];
 
   return (
     <>
@@ -16,6 +19,7 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
       >
         Skip to main content
       </a>
+      {announcement && <AnnouncementBar banner={announcement} />}
       <SiteHeader navLinks={navLinks} />
       {/* tabIndex={-1} lets the skip link move focus (not just scroll) in Chromium/Safari */}
       <main id="main-content" tabIndex={-1} className="min-h-[calc(100vh-4rem)] focus:outline-none">{children}</main>
