@@ -292,3 +292,23 @@ export const HOMEPAGE_QUERY = `
     }
   }
 `;
+
+export const BANNERS_QUERY = `
+  query Banners {
+    metaobjects(type: "banner", first: 24) {
+      edges {
+        node {
+          fields {
+            key
+            value
+            reference {
+              ... on MediaImage {
+                image { url }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+`;
