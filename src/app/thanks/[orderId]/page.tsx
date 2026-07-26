@@ -1,5 +1,7 @@
 import Link from 'next/link';
 import ClearCartOnMount from '@/features/cart/ClearCartOnMount';
+import { getBanners } from '@/lib/commerce/content';
+import PromoBanner from '@/components/site/PromoBanner';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,6 +16,7 @@ interface PageProps {
 // secure Rx-upload and tracking links are delivered by email to the customer.
 export default async function ThanksPage({ params }: PageProps) {
   const { orderId } = await params;
+  const thanksBanner = (await getBanners()).thanks?.[0];
 
   return (
     <div className="min-h-screen bg-base flex items-center justify-center px-4">
@@ -38,6 +41,12 @@ export default async function ThanksPage({ params }: PageProps) {
         <p className="text-sm text-muted-soft mb-8">
           You can track your order any time from your account or the link in your shipping email.
         </p>
+
+        {thanksBanner && (
+          <div className="text-left mb-8">
+            <PromoBanner banner={thanksBanner} />
+          </div>
+        )}
 
         <div className="pt-8 border-t border-line">
           <p className="text-muted font-serif italic mb-4 leading-relaxed">

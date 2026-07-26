@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { cache } from 'react';
 import { getCollectionProducts, getProducts } from '@/lib/commerce/shopify';
+import { getBanners } from '@/lib/commerce/content';
 import { parseCatalogSearchParams, activeFilterEntries } from '@/lib/commerce/catalog-filters';
 import type { CollectionProductsResult, SearchParamsRecord } from '@/lib/commerce/types';
 import Breadcrumbs from '@/features/shop/catalog/Breadcrumbs';
@@ -9,8 +10,10 @@ import FilterDrawer from '@/features/shop/catalog/FilterDrawer';
 import SortDropdown from '@/features/shop/catalog/SortDropdown';
 import ActiveFilterPills from '@/features/shop/catalog/ActiveFilterPills';
 import ProductGrid from '@/features/shop/catalog/ProductGrid';
+import PromoBanner from '@/components/site/PromoBanner';
 import LoadMore from '@/features/shop/catalog/LoadMore';
 import Link from 'next/link';
+import Image from 'next/image';
 
 export const revalidate = 900;
 
@@ -79,6 +82,10 @@ export default async function CollectionPage({ params, searchParams }: PlpProps)
 
   if (!res.collection) notFound();
 
+  const banners = await getBanners();
+  const gridPromo = banners.plp_grid?.[0];
+  const quizBanner = sp.quiz === 'true' ? banners.quiz_results?.[0] : undefined;
+
   const activeCount = activeFilterEntries(qs).length;
   const hasProducts = res.products.length > 0;
 
@@ -107,6 +114,11 @@ export default async function CollectionPage({ params, searchParams }: PlpProps)
         <Breadcrumbs
           items={[{ label: 'Home', href: '/' }, { label: 'Shop', href: '/shop' }, { label: res.collection.title }]}
         />
+        {res.collection.image?.url && (
+          <div className="relative h-40 sm:h-56 rounded-xl overflow-hidden border border-line">
+            <Image src={res.collection.image.url} alt="" aria-hidden="true" fill sizes="100vw" className="object-cover" />
+          </div>
+        )}
         <h1 className="font-sans text-4xl font-black tracking-tight uppercase text-ink">
           {res.collection.title}
         </h1>
@@ -130,11 +142,12 @@ export default async function CollectionPage({ params, searchParams }: PlpProps)
         </aside>
 
         <main className="flex-1 space-y-6 min-w-0">
+          {quizBanner && <PromoBanner banner={quizBanner} />}
           <ActiveFilterPills resultCount={res.products.length} hasNextPage={res.pageInfo.hasNextPage} />
 
           {hasProducts ? (
             <>
-              <ProductGrid products={res.products} />
+              <ProductGrid products={res.products} promo={gridPromo} />
               <LoadMore
                 collectionHandle={res.collection.handle}
                 queryString={qs}

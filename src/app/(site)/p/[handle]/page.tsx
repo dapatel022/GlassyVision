@@ -1,8 +1,10 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { getProductByHandle } from '@/lib/commerce/shopify';
+import { getBanners } from '@/lib/commerce/content';
 import ProductGallery from '@/features/shop/ProductGallery';
 import PdpConfigurator from '@/features/shop/PdpConfigurator';
+import PromoBanner from '@/components/site/PromoBanner';
 
 export const revalidate = 300;
 
@@ -45,6 +47,8 @@ export default async function ProductDetailPage({ params }: PageProps) {
     product = null;
   }
   if (!product) notFound();
+
+  const pdpBanner = (await getBanners()).pdp?.[0];
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12">
@@ -106,6 +110,8 @@ export default async function ProductDetailPage({ params }: PageProps) {
           <p className="text-[10px] text-muted-soft font-serif italic text-center">
             You can upload your prescription after checkout. A photo of your prescription is required before your lenses are made.
           </p>
+
+          {pdpBanner && <PromoBanner banner={pdpBanner} />}
         </div>
       </div>
     </div>
