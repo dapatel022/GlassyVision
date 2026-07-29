@@ -101,7 +101,36 @@ export async function reviewReturn(input: ReviewReturnInput): Promise<{ success:
     })
     .eq('id', input.returnId);
 
-  if (error) return { success: false, error: 'Failed to save decision' };
+  if (error) {
+    if (shopifyRefundId !== null) {
+      // Money already moved on Shopify but the decision failed to persist. Do
+      // NOT release the claim — a retry would pass the pending check and issue
+      // a SECOND refund. Leave the row in_progress and record the refund id in
+      // the audit log so the movement has a durable local record for manual
+      // reconciliation.
+      const { error: auditErr } = await supabase.from('audit_log').insert({
+        user_id: user.id,
+        action: 'return_decision_persist_failed',
+        entity_type: 'returns',
+        entity_id: input.returnId,
+        after_data: {
+          decision: input.decision,
+          shopify_refund_id: shopifyRefundId,
+          error: error.message,
+        } as unknown as Json,
+      });
+      if (auditErr) {
+        console.error('[review-return] persist-failure audit insert also failed', { returnId: input.returnId, shopifyRefundId, error: auditErr });
+      }
+      return {
+        success: false,
+        error: `Refund ${shopifyRefundId} was issued on Shopify but saving the decision failed — do NOT retry; reconcile manually (see audit log)`,
+      };
+    }
+    // No money moved — release the claim so the admin can safely retry.
+    await supabase.from('returns').update({ status: 'pending' }).eq('id', input.returnId);
+    return { success: false, error: 'Failed to save decision' };
+  }
 
   await supabase.from('audit_log').insert({
     user_id: user.id,

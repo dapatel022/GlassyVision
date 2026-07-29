@@ -159,8 +159,24 @@ export async function reviewRx(input: ReviewRxInput): Promise<ReviewRxResult> {
     .update({ rx_status: 'approved' satisfies RxStatus })
     .eq('id', rxFile.order_id);
   if (updateError) {
-    console.error('[review-rx] orders.rx_status update failed', { orderId: rxFile.order_id, error: updateError });
-    return { success: false, error: 'Review saved but order status update failed — please retry or contact support' };
+    // The work order and lab job now EXIST, so we must not delete the review
+    // (a re-approval would be blocked by generateWorkOrder's idempotency, but
+    // the queue would show an item whose work order is already in flight).
+    // The order's rx_status is now stale relative to rx_reviews/work_orders —
+    // shipment gates re-derive from those tables so compliance is unaffected,
+    // but record the drift durably for ops follow-up.
+    console.error('[review-rx] orders.rx_status update failed after work order generation', { orderId: rxFile.order_id, error: updateError });
+    const { error: driftAuditError } = await supabase.from('audit_log').insert({
+      user_id: reviewerUserId,
+      action: 'rx_status_update_failed',
+      entity_type: 'orders',
+      entity_id: rxFile.order_id,
+      after_data: { rx_file_id: input.rxFileId, work_order_id: genResult.workOrderId, error: updateError.message } as unknown as Json,
+    });
+    if (driftAuditError) {
+      console.error('[review-rx] drift-audit insert failed', driftAuditError);
+    }
+    return { success: false, error: 'Work order was created but the order status update failed — see audit log; contact support before re-reviewing' };
   }
 
   // Best-effort: tell the customer their Rx passed review and is in production.

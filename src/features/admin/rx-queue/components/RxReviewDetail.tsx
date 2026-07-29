@@ -41,25 +41,39 @@ const REJECTION_REASONS: { value: RxRejectionReason; label: string }[] = [
 
 export default function RxReviewDetail({ detail, onReviewComplete }: RxReviewDetailProps) {
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectReason, setRejectReason] = useState<RxRejectionReason>('image_too_blurry');
   const [rejectNotes, setRejectNotes] = useState('');
 
   const handleApprove = useCallback(async () => {
+    // Guard against the keyboard shortcut firing again before React re-renders
+    // the disabled button state.
+    if (submitting) return;
     setSubmitting(true);
-    await reviewRx({
+    setError(null);
+    const result = await reviewRx({
       rxFileId: detail.id,
       decision: 'approved',
       decisionReason: 'clean_approved',
       notes: null,
     });
     setSubmitting(false);
+    if (!result.success) {
+      // e.g. "Approval not applied: Rx dispensing is restricted to US/CA" —
+      // the review was rolled back and the Rx stays in the queue; the admin
+      // must see why instead of a silently "successful" click.
+      setError(result.error ?? 'Review failed');
+      return;
+    }
     onReviewComplete();
-  }, [detail.id, onReviewComplete]);
+  }, [detail.id, onReviewComplete, submitting]);
 
   async function handleReject() {
+    if (submitting) return;
     setSubmitting(true);
-    await reviewRx({
+    setError(null);
+    const result = await reviewRx({
       rxFileId: detail.id,
       decision: 'rejected',
       decisionReason: rejectReason,
@@ -67,6 +81,10 @@ export default function RxReviewDetail({ detail, onReviewComplete }: RxReviewDet
     });
     setSubmitting(false);
     setShowRejectModal(false);
+    if (!result.success) {
+      setError(result.error ?? 'Review failed');
+      return;
+    }
     onReviewComplete();
   }
 
@@ -142,6 +160,12 @@ export default function RxReviewDetail({ detail, onReviewComplete }: RxReviewDet
           Certified: {detail.certificationChecked ? 'Yes' : 'No'}
         </p>
       </div>
+
+      {error && (
+        <div role="alert" className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-900 mb-4">
+          {error}
+        </div>
+      )}
 
       <div className="flex items-center gap-3">
         <button

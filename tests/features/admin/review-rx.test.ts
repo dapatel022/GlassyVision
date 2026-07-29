@@ -222,6 +222,46 @@ describe('reviewRx', () => {
     expect(callOrder).toEqual(['generate', 'status-update']);
   });
 
+  it('audit-logs and surfaces the drift when the status update fails AFTER the work order was generated', async () => {
+    // generateWorkOrderMock default: success.
+    const reviewInsert = vi.fn(() => ({
+      select: vi.fn(() => ({
+        single: vi.fn(() => Promise.resolve({ data: { id: 'review-11' }, error: null })),
+      })),
+    }));
+    const reviewDelete = vi.fn(() => ({
+      eq: vi.fn(() => Promise.resolve({ error: null })),
+    }));
+    const auditInsert = vi.fn(() => Promise.resolve({ error: null }));
+    const rxFileSelect = vi.fn(() => ({
+      eq: vi.fn(() => ({
+        single: vi.fn(() => Promise.resolve({ data: { id: 'rx-11', order_id: 'order-11' }, error: null })),
+      })),
+    }));
+    const orderUpdate = vi.fn(() => ({
+      eq: vi.fn(() => Promise.resolve({ error: { message: 'db down' } })),
+    }));
+
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'rx_files') return { select: rxFileSelect };
+      if (table === 'rx_reviews') return { insert: reviewInsert, delete: reviewDelete };
+      if (table === 'audit_log') return { insert: auditInsert };
+      if (table === 'orders') return { update: orderUpdate };
+      return {};
+    });
+
+    const { reviewRx } = await import('@/features/admin/rx-queue/actions/review-rx');
+    const result = await reviewRx({ rxFileId: 'rx-11', decision: 'approved', decisionReason: 'clean_approved', notes: null });
+
+    expect(result.success).toBe(false);
+    // The work order EXISTS — deleting the review here would let a re-approval
+    // duplicate paths; instead the drift is audit-logged for ops follow-up.
+    expect(reviewDelete).not.toHaveBeenCalled();
+    expect(auditInsert).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'rx_status_update_failed',
+    }));
+  });
+
   it('rejects callers who are not admin/reviewer (privilege escalation guard)', async () => {
     const { getCurrentUser } = await import('@/lib/auth/middleware');
     vi.mocked(getCurrentUser).mockResolvedValueOnce({
