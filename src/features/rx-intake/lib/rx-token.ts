@@ -34,11 +34,17 @@ export function verifyRxToken(
       .update(payload, 'utf-8')
       .digest('hex');
 
+    // timingSafeEqual throws on length mismatch — guard so a wrong-length token
+    // is a clean rejection, not a thrown-then-swallowed false.
+    if (token.length !== expected.length) return false;
     return timingSafeEqual(
       Buffer.from(expected),
       Buffer.from(token),
     );
-  } catch {
+  } catch (e) {
+    // A misconfigured secret must surface (Sentry/500), not silently reject
+    // every customer link as if it were invalid.
+    if (e instanceof Error && e.message.includes('RX_TOKEN_SECRET')) throw e;
     return false;
   }
 }

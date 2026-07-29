@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { generateRxToken, verifyRxToken, parseRxTokenParams } from '@/features/rx-intake/lib/rx-token';
 
 describe('Rx Token', () => {
@@ -51,6 +51,21 @@ describe('Rx Token', () => {
     it('returns false for empty inputs', () => {
       expect(verifyRxToken('', 'token', Date.now())).toBe(false);
       expect(verifyRxToken(orderId, '', Date.now())).toBe(false);
+    });
+
+    it('throws (not false) when RX_TOKEN_SECRET is missing — misconfiguration must surface', () => {
+      const { token, exp } = generateRxToken(orderId);
+      vi.stubEnv('RX_TOKEN_SECRET', '');
+      try {
+        expect(() => verifyRxToken(orderId, token, exp)).toThrow('RX_TOKEN_SECRET');
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
+
+    it('returns false for a wrong-length token (no throw)', () => {
+      const { exp } = generateRxToken(orderId);
+      expect(verifyRxToken(orderId, 'short', exp)).toBe(false);
     });
   });
 
