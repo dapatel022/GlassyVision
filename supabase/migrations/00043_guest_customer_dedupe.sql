@@ -5,6 +5,9 @@
 --    repoint known customer_id FKs to it, then delete the extras.
 --    Emailless sentinel 'no-email@shopify.com' is excluded — distinct anonymous
 --    buyers all share that placeholder and must NOT be merged.
+-- NOTE: a CTE is scoped to a single statement, so the keepers/dupes pair is
+-- repeated per statement below (the original single-CTE version failed with
+-- `relation "keepers" does not exist` on the second statement).
 with keepers as (
   select distinct on (lower(email)) lower(email) as le, id as keep_id
   from customers
@@ -21,25 +24,53 @@ update orders o set customer_id = d.keep_id
 from dupes d where o.customer_id = d.dup_id;
 
 -- repoint subscription memberships + saved addresses, if those tables exist
+with keepers as (
+  select distinct on (lower(email)) lower(email) as le, id as keep_id
+  from customers
+  where shopify_customer_id is null and email <> 'no-email@shopify.com'
+  order by lower(email), created_at asc, id asc
+),
+dupes as (
+  select c.id as dup_id, k.keep_id
+  from customers c
+  join keepers k on k.le = lower(c.email)
+  where c.shopify_customer_id is null and c.email <> 'no-email@shopify.com' and c.id <> k.keep_id
+)
 update subscription_memberships m
-set customer_id = k.keep_id
-from keepers k
-where m.customer_id in (
-  select c.id from customers c
-  where c.shopify_customer_id is null and c.email <> 'no-email@shopify.com' and lower(c.email) = k.le and c.id <> k.keep_id
-);
+set customer_id = d.keep_id
+from dupes d where m.customer_id = d.dup_id;
 
+with keepers as (
+  select distinct on (lower(email)) lower(email) as le, id as keep_id
+  from customers
+  where shopify_customer_id is null and email <> 'no-email@shopify.com'
+  order by lower(email), created_at asc, id asc
+),
+dupes as (
+  select c.id as dup_id, k.keep_id
+  from customers c
+  join keepers k on k.le = lower(c.email)
+  where c.shopify_customer_id is null and c.email <> 'no-email@shopify.com' and c.id <> k.keep_id
+)
 update customer_saved_addresses a
-set customer_id = k.keep_id
-from keepers k
-where a.customer_id in (
-  select c.id from customers c
-  where c.shopify_customer_id is null and c.email <> 'no-email@shopify.com' and lower(c.email) = k.le and c.id <> k.keep_id
-);
+set customer_id = d.keep_id
+from dupes d where a.customer_id = d.dup_id;
 
+with keepers as (
+  select distinct on (lower(email)) lower(email) as le, id as keep_id
+  from customers
+  where shopify_customer_id is null and email <> 'no-email@shopify.com'
+  order by lower(email), created_at asc, id asc
+),
+dupes as (
+  select c.id as dup_id, k.keep_id
+  from customers c
+  join keepers k on k.le = lower(c.email)
+  where c.shopify_customer_id is null and c.email <> 'no-email@shopify.com' and c.id <> k.keep_id
+)
 delete from customers c
-using keepers k
-where c.shopify_customer_id is null and c.email <> 'no-email@shopify.com' and lower(c.email) = k.le and c.id <> k.keep_id;
+using dupes d
+where c.id = d.dup_id;
 
 -- 2) Enforce one guest row per email going forward.
 --    Emailless sentinel 'no-email@shopify.com' is excluded so distinct anonymous
