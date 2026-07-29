@@ -1400,6 +1400,16 @@ export type Database = {
         };
         Returns: string | null;
       };
+      adjust_inventory_pool: {
+        Args: {
+          p_pool_id: string;
+          p_delta: number;
+          p_reason: Database['public']['Enums']['adjustment_reason'];
+          p_user_id: string;
+          p_notes?: string | null;
+        };
+        Returns: number | null;
+      };
       release_inventory_unit: {
         Args: {
           p_variant_id: number;

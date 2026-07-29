@@ -21,34 +21,27 @@ export async function adjustInventory(
 
   const supabase = createAdminClient();
 
-  const { data: pool } = await supabase
-    .from('inventory_pool')
-    .select('id, pool_quantity')
-    .eq('id', poolId)
-    .maybeSingle();
-
-  if (!pool) return { success: false, error: 'Pool not found' };
-
-  const next = pool.pool_quantity + delta;
-  if (next < 0) return { success: false, error: 'Quantity would go negative' };
-
-  const { error: updErr } = await supabase
-    .from('inventory_pool')
-    .update({ pool_quantity: next, last_updated_by: userId, last_updated_at: new Date().toISOString() })
-    .eq('id', poolId);
-  if (updErr) return { success: false, error: 'Failed to update pool' };
-
-  const { error: ledgerErr } = await supabase.from('inventory_adjustments').insert({
-    inventory_pool_id: poolId,
-    delta,
-    reason,
-    user_id: userId,
-    notes,
+  // Atomic: the RPC does the guard, the pool mutation, and the ledger insert in
+  // one statement, eliminating the read-modify-write race where two concurrent
+  // adjustments clobbered each other (same fix as 00032's reserve/release).
+  const { data: newQty, error: rpcError } = await supabase.rpc('adjust_inventory_pool', {
+    p_pool_id: poolId,
+    p_delta: delta,
+    p_reason: reason,
+    p_user_id: userId,
+    p_notes: notes,
   });
-  if (ledgerErr) {
-    // The pool was already mutated; a missing ledger row breaks the audit trail.
-    // Log loudly so the drift is visible rather than silently lost.
-    console.error('[adjust-inventory] ledger insert failed', { poolId, delta, error: ledgerErr });
+  if (rpcError) return { success: false, error: 'Failed to update pool' };
+
+  if (newQty === null || newQty === undefined) {
+    // NULL means the conditional UPDATE matched no row: pool missing, or the
+    // delta would take the quantity negative. Distinguish for a useful message.
+    const { data: pool } = await supabase
+      .from('inventory_pool')
+      .select('id')
+      .eq('id', poolId)
+      .maybeSingle();
+    return { success: false, error: pool ? 'Quantity would go negative' : 'Pool not found' };
   }
 
   return { success: true };
