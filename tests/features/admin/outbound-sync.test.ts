@@ -86,9 +86,14 @@ describe('Outbound Shopify Integrations', () => {
         })),
       }));
 
-      const mockUpdate = vi.fn(() => ({
-        eq: vi.fn(() => Promise.resolve({ error: null })),
-      }));
+      // First call = atomic claim (.eq().eq().select()), later calls = finalize.
+      const mockUpdate = vi.fn()
+        .mockImplementationOnce(() => ({
+          eq: () => ({ eq: () => ({ select: () => Promise.resolve({ data: [{ id: 'ret-123' }], error: null }) }) }),
+        }))
+        .mockImplementation(() => ({
+          eq: vi.fn(() => Promise.resolve({ error: null })),
+        }));
       const mockInsert = vi.fn(() => Promise.resolve({ error: null }));
 
       mockFrom.mockImplementation((table: string) => {
@@ -120,7 +125,7 @@ describe('Outbound Shopify Integrations', () => {
       }));
     });
 
-    it('returns error and does not update DB if Shopify refund fails', async () => {
+    it('returns error and rolls the claim back if Shopify refund fails', async () => {
       // Mock returns selection
       const mockSelect = vi.fn(() => ({
         eq: vi.fn(() => ({
@@ -135,7 +140,14 @@ describe('Outbound Shopify Integrations', () => {
         })),
       }));
 
-      const mockUpdate = vi.fn();
+      // First call = atomic claim, second (if any) = rollback to pending.
+      const mockUpdate = vi.fn()
+        .mockImplementationOnce(() => ({
+          eq: () => ({ eq: () => ({ select: () => Promise.resolve({ data: [{ id: 'ret-123' }], error: null }) }) }),
+        }))
+        .mockImplementation(() => ({
+          eq: vi.fn(() => Promise.resolve({ error: null })),
+        }));
 
       mockFrom.mockImplementation((table: string) => {
         if (table === 'returns') {
@@ -156,7 +168,10 @@ describe('Outbound Shopify Integrations', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Failed to create refund on Shopify');
-      expect(mockUpdate).not.toHaveBeenCalled();
+      // Claim + rollback only — the decision/refund fields are never written.
+      expect(mockUpdate).toHaveBeenCalledTimes(2);
+      expect(mockUpdate.mock.calls[1][0]).toMatchObject({ status: 'pending' });
+      expect(mockUpdate).not.toHaveBeenCalledWith(expect.objectContaining({ admin_decision: 'approved_refund' }));
     });
   });
 });
