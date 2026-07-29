@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createShipment } from '../actions/create-shipment';
+import { CARRIERS } from '../carriers';
 
 interface Item {
   jobId: string;
@@ -12,8 +13,6 @@ interface Item {
   orderNumber: string;
   priority: number;
 }
-
-const CARRIERS = ['DHL', 'FedEx', 'Shiprocket', 'India Post', 'Aramex'];
 
 interface Props {
   items: Item[];

@@ -9,6 +9,7 @@ import { advanceRedemptionForOrder } from '@/features/subscriptions/advance-rede
 import { sendEmail } from '@/lib/email/resend';
 import { renderPairShipped } from '@/lib/email/templates/pair-shipped';
 import { buildTrackUrl } from '@/features/rx-intake/lib/rx-token';
+import { CARRIERS } from '@/features/lab/carriers';
 import type { Json } from '@/lib/supabase/types';
 
 export interface CreateShipmentInput {
@@ -29,6 +30,15 @@ export async function createShipment(input: CreateShipmentInput): Promise<{ succ
   const user = await getCurrentUser();
   if (!user || !isLabRole(user.role)) {
     return { success: false, error: 'Forbidden' };
+  }
+
+  // The client form validates these too, but server actions are directly
+  // invokable HTTP endpoints — a blank tracking number would otherwise pass
+  // every compliance gate and reach Shopify's fulfillment API.
+  const trackingNumber = input.trackingNumber?.trim() ?? '';
+  if (!trackingNumber) return { success: false, error: 'Tracking number is required' };
+  if (!(CARRIERS as readonly string[]).includes(input.carrier)) {
+    return { success: false, error: 'Unknown carrier' };
   }
 
   const supabase = createAdminClient();
@@ -141,7 +151,7 @@ export async function createShipment(input: CreateShipmentInput): Promise<{ succ
       order_id: wo.order_id,
       direction: 'outbound',
       carrier: input.carrier,
-      tracking_number: input.trackingNumber,
+      tracking_number: trackingNumber,
       tracking_url: input.trackingUrl ?? null,
       status: 'in_transit',
       shipped_at: shippedAt,
@@ -179,7 +189,7 @@ export async function createShipment(input: CreateShipmentInput): Promise<{ succ
     try {
       await sendPairShippedEmail(supabase, wo.order_id, {
         carrier: input.carrier,
-        trackingNumber: input.trackingNumber,
+        trackingNumber,
         trackingUrl: input.trackingUrl,
       });
     } catch (e) {
@@ -206,7 +216,7 @@ export async function createShipment(input: CreateShipmentInput): Promise<{ succ
         .eq('id', wo.line_item_id)
         .maybeSingle();
       if (orderRow?.shopify_order_id && typeof lineItem?.shopify_line_item_id === 'number') {
-        await createFulfillment(orderRow.shopify_order_id, input.trackingNumber, input.carrier, [lineItem.shopify_line_item_id]);
+        await createFulfillment(orderRow.shopify_order_id, trackingNumber, input.carrier, [lineItem.shopify_line_item_id]);
       }
     } catch (e) {
       // The local shipment is recorded, but Shopify wasn't told — so the customer
@@ -220,7 +230,7 @@ export async function createShipment(input: CreateShipmentInput): Promise<{ succ
         action: 'shopify_fulfillment_push_failed',
         entity_type: 'work_orders',
         entity_id: job.work_order_id,
-        after_data: { tracking_number: input.trackingNumber, carrier: input.carrier, error: message } as unknown as Json,
+        after_data: { tracking_number: trackingNumber, carrier: input.carrier, error: message } as unknown as Json,
       });
       if (auditErr) {
         console.error('[create-shipment] failure-audit insert also failed', auditErr);

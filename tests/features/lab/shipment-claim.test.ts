@@ -99,6 +99,30 @@ describe('createShipment — atomic double-shipment claim', () => {
     expect(jobUpdate.mock.calls[1][0]).toMatchObject({ completed_at: null });
   });
 
+  it('rejects a whitespace-only tracking number server-side', async () => {
+    installClient();
+    const { createShipment } = await import('@/features/lab/actions/create-shipment');
+    const result = await createShipment({ jobId: 'job-1', carrier: 'DHL', trackingNumber: '   ' });
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Tracking number is required');
+  });
+
+  it('rejects an unknown carrier server-side', async () => {
+    installClient();
+    const { createShipment } = await import('@/features/lab/actions/create-shipment');
+    const result = await createShipment({ jobId: 'job-1', carrier: 'PigeonPost', trackingNumber: 'TRK123' });
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Unknown carrier');
+  });
+
+  it('trims the tracking number before storing it', async () => {
+    const { shipmentInsert } = installClient();
+    const { createShipment } = await import('@/features/lab/actions/create-shipment');
+    const result = await createShipment({ jobId: 'job-1', carrier: 'DHL', trackingNumber: '  TRK123  ' });
+    expect(result.success).toBe(true);
+    expect(shipmentInsert.mock.calls[0][0]).toMatchObject({ tracking_number: 'TRK123' });
+  });
+
   it('ships on the happy path: claim, insert, then set shipment_id only', async () => {
     const { jobUpdate, shipmentInsert } = installClient();
     const { createShipment } = await import('@/features/lab/actions/create-shipment');
