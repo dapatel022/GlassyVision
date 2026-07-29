@@ -23,11 +23,18 @@ export async function addQcPhoto(jobId: string, storagePath: string): Promise<{ 
 
   const { data: job } = await supabase
     .from('lab_jobs')
-    .select('qc_photos')
+    .select('column, qc_photos')
     .eq('id', jobId)
     .maybeSingle();
 
   if (!job) return { success: false, error: 'Job not found' };
+
+  // QC photos document the finished pair at inspection time. Attaching one
+  // earlier would satisfy the QC shipment gate without the job ever reaching
+  // QC, so bind the upload to the QC stage.
+  if (job.column !== 'qc') {
+    return { success: false, error: 'QC photos can only be added while the job is in the QC stage' };
+  }
 
   const existing = (job.qc_photos as unknown as string[]) ?? [];
   if (existing.includes(storagePath)) return { success: true }; // idempotent

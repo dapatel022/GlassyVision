@@ -8,6 +8,7 @@ type KanbanColumn = Database['public']['Enums']['kanban_column'];
 
 const QC_REQUIRED_ON_EXIT: KanbanColumn = 'qc';
 const SHIP_COLUMN: KanbanColumn = 'ship';
+const COLUMN_ORDER: KanbanColumn[] = ['inbox', 'ready_to_cut', 'on_edger', 'on_bench', 'qc', 'ship'];
 
 export async function moveJob(jobId: string, toColumn: KanbanColumn): Promise<{ success: boolean; error?: string }> {
   const user = await getCurrentUser();
@@ -24,6 +25,16 @@ export async function moveJob(jobId: string, toColumn: KanbanColumn): Promise<{ 
     .maybeSingle();
 
   if (!job) return { success: false, error: 'Job not found' };
+
+  // Production stages are a physical pipeline: a frame cannot be shipped
+  // without being cut, edged, benched, and QC'd. Forward moves advance exactly
+  // one stage; backward moves (rework) are always allowed.
+  const fromIdx = COLUMN_ORDER.indexOf(job.column);
+  const toIdx = COLUMN_ORDER.indexOf(toColumn);
+  if (toIdx === -1) return { success: false, error: 'Unknown column' };
+  if (toIdx > fromIdx + 1) {
+    return { success: false, error: 'Jobs must advance one production stage at a time' };
+  }
 
   const photos = (job.qc_photos as unknown as unknown[]) ?? [];
 

@@ -28,7 +28,8 @@ interface ClientOverrides {
 }
 
 function installClient(o: ClientOverrides = {}) {
-  const job = 'job' in o ? o.job : { id: 'job-1', work_order_id: 'wo-1', column: 'qc', qc_photos: ['qc/1.jpg'], started_at: '2026-05-01T00:00:00Z' };
+  // Default job is ship-ready: createShipment now requires column === 'ship'.
+  const job = 'job' in o ? o.job : { id: 'job-1', work_order_id: 'wo-1', column: 'ship', qc_photos: ['qc/1.jpg'], started_at: '2026-05-01T00:00:00Z' };
   const wo = 'wo' in o ? o.wo : { order_id: 'order-1', rx_file_id: 'rx-1', released_to_lab_at: '2026-05-01T00:00:00Z' };
   const rxFile = 'rxFile' in o ? o.rxFile : { id: 'rx-1', storage_path: 'rx/1.jpg', deleted_at: null };
   const reviews = 'reviews' in o ? o.reviews : [{ decision: 'approved' }];

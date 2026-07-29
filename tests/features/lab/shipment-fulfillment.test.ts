@@ -18,7 +18,7 @@ function installCompliantClient() {
     switch (table) {
       case 'lab_jobs':
         return {
-          select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: { id: 'job-1', work_order_id: 'wo-1', qc_photos: ['qc/1.jpg'] }, error: null }) }) }),
+          select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: { id: 'job-1', work_order_id: 'wo-1', column: 'ship', qc_photos: ['qc/1.jpg'] }, error: null }) }) }),
           update: () => ({ eq: () => Promise.resolve({ error: null }) }),
         };
       case 'work_orders':

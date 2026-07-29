@@ -37,7 +37,7 @@ function installClient(opts: ClientOpts = {}) {
     switch (table) {
       case 'lab_jobs':
         return {
-          select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: { id: 'job-1', work_order_id: 'wo-1', qc_photos: qcPhotos }, error: null }) }) }),
+          select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: { id: 'job-1', work_order_id: 'wo-1', column: 'ship', qc_photos: qcPhotos }, error: null }) }) }),
           update: () => ({ eq: () => Promise.resolve({ error: null }) }),
         };
       case 'work_orders':

@@ -35,7 +35,7 @@ export async function createShipment(input: CreateShipmentInput): Promise<{ succ
 
   const { data: job } = await supabase
     .from('lab_jobs')
-    .select('id, work_order_id, qc_photos, completed_at, shipment_id')
+    .select('id, work_order_id, column, qc_photos, completed_at, shipment_id')
     .eq('id', input.jobId)
     .maybeSingle();
   if (!job) return { success: false, error: 'Job not found' };
@@ -98,6 +98,13 @@ export async function createShipment(input: CreateShipmentInput): Promise<{ succ
   const qcPhotos = (job.qc_photos as unknown as unknown[]) ?? [];
   if (qcPhotos.length === 0) {
     return { success: false, error: 'Cannot ship: QC photos are required before shipment' };
+  }
+
+  // Defense in depth: createShipment is an independently invokable server
+  // action, so re-assert the kanban precondition moveJob enforces — the job
+  // must actually be in the ship column.
+  if (job.column !== 'ship') {
+    return { success: false, error: 'Cannot ship: job is not in the ship column' };
   }
 
   const { data: order } = await supabase
