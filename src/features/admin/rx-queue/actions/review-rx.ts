@@ -45,7 +45,7 @@ export async function reviewRx(input: ReviewRxInput): Promise<ReviewRxResult> {
     return { success: false, error: 'Rx file not found' };
   }
 
-  const { error: reviewError } = await supabase
+  const { data: review, error: reviewError } = await supabase
     .from('rx_reviews')
     .insert({
       rx_file_id: input.rxFileId,
@@ -57,7 +57,7 @@ export async function reviewRx(input: ReviewRxInput): Promise<ReviewRxResult> {
     .select('id')
     .single();
 
-  if (reviewError) {
+  if (reviewError || !review) {
     return { success: false, error: 'Failed to save review' };
   }
 
@@ -79,17 +79,15 @@ export async function reviewRx(input: ReviewRxInput): Promise<ReviewRxResult> {
     console.error('[review-rx] audit_log insert failed', { rxFileId: input.rxFileId, error: auditError });
   }
 
-  const newStatus: RxStatus = input.decision === 'approved' ? 'approved' : 'rejected';
-  const { error: updateError } = await supabase
-    .from('orders')
-    .update({ rx_status: newStatus })
-    .eq('id', rxFile.order_id);
-  if (updateError) {
-    console.error('[review-rx] orders.rx_status update failed', { orderId: rxFile.order_id, error: updateError });
-    return { success: false, error: 'Review saved but order status update failed — please retry or contact support' };
-  }
-
-  if (input.decision === 'rejected') {
+  if (input.decision !== 'approved') {
+    const { error: updateError } = await supabase
+      .from('orders')
+      .update({ rx_status: 'rejected' satisfies RxStatus })
+      .eq('id', rxFile.order_id);
+    if (updateError) {
+      console.error('[review-rx] orders.rx_status update failed', { orderId: rxFile.order_id, error: updateError });
+      return { success: false, error: 'Review saved but order status update failed — please retry or contact support' };
+    }
     const { error: deleteError } = await supabase
       .from('rx_files')
       .update({ deleted_at: new Date().toISOString() })
@@ -122,49 +120,73 @@ export async function reviewRx(input: ReviewRxInput): Promise<ReviewRxResult> {
     } catch (e) {
       console.error('[review-rx] rejection email failed', { rxFileId: input.rxFileId, error: e });
     }
+
+    return { success: true };
   }
 
-  if (input.decision === 'approved') {
-    const genResult = await generateWorkOrder(input.rxFileId);
-    if (!genResult.success) {
-      console.error('[review-rx] work order generation failed', { rxFileId: input.rxFileId, error: genResult.error });
-      const { error: failureAuditError } = await supabase.from('audit_log').insert({
-        user_id: reviewerUserId,
-        action: 'work_order_generation_failed',
-        entity_type: 'rx_files',
-        entity_id: input.rxFileId,
-        after_data: { error: genResult.error } as unknown as Json,
-      });
-      if (failureAuditError) {
-        console.error('[review-rx] failure-audit insert failed', failureAuditError);
-      }
-    } else {
-      // Best-effort: tell the customer their Rx passed review and is in production.
-      // Only fires when the work order was successfully generated — a failed
-      // generation must NOT tell the customer "your lenses are being crafted".
-      // Fires for one-time AND synthesized subscription orders (both reach reviewRx).
-      // Gated only on a real recipient, deduped on (order_id, 'rx_approved').
-      try {
-        const { data: order } = await supabase
-          .from('orders')
-          .select('customer_email, shopify_order_number')
-          .eq('id', rxFile.order_id)
-          .single();
-        const email = order?.customer_email;
-        if (email && email !== 'no-email@shopify.com') {
-          const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://glassyvision.com';
-          await sendOrderEmailOnce({
-            supabase,
-            orderId: rxFile.order_id,
-            customerEmail: email,
-            type: 'rx_approved',
-            rendered: renderRxApproved({ orderNumber: order?.shopify_order_number ?? null, ordersUrl: `${baseUrl}/account/orders` }),
-          });
-        }
-      } catch (e) {
-        console.error('[review-rx] approval email failed', { rxFileId: input.rxFileId, error: e });
-      }
+  // Approved: generate the work order BEFORE flipping the order to approved.
+  // If generation fails (non-dispensable destination, expired Rx, insert error),
+  // an already-approved status would strand the order invisibly: the Rx leaves
+  // the review queue (it filters on "no review row") and the customer page
+  // renders a terminal "approved" state. So on failure we delete the review row
+  // (the Rx reappears in the queue) and surface the error to the admin.
+  const genResult = await generateWorkOrder(input.rxFileId);
+  if (!genResult.success) {
+    const { error: reviewDeleteError } = await supabase
+      .from('rx_reviews')
+      .delete()
+      .eq('id', review.id);
+    if (reviewDeleteError) {
+      // Worst case: the review sticks and the Rx leaves the queue — but the
+      // admin has seen this error, so it is no longer a silent strand.
+      console.error('[review-rx] compensating review delete failed', { reviewId: review.id, error: reviewDeleteError });
     }
+    const { error: failureAuditError } = await supabase.from('audit_log').insert({
+      user_id: reviewerUserId,
+      action: 'work_order_generation_failed',
+      entity_type: 'rx_files',
+      entity_id: input.rxFileId,
+      after_data: { error: genResult.error } as unknown as Json,
+    });
+    if (failureAuditError) {
+      console.error('[review-rx] failure-audit insert failed', failureAuditError);
+    }
+    return { success: false, error: `Approval not applied: ${genResult.error}` };
+  }
+
+  const { error: updateError } = await supabase
+    .from('orders')
+    .update({ rx_status: 'approved' satisfies RxStatus })
+    .eq('id', rxFile.order_id);
+  if (updateError) {
+    console.error('[review-rx] orders.rx_status update failed', { orderId: rxFile.order_id, error: updateError });
+    return { success: false, error: 'Review saved but order status update failed — please retry or contact support' };
+  }
+
+  // Best-effort: tell the customer their Rx passed review and is in production.
+  // Only fires when the work order was successfully generated — a failed
+  // generation must NOT tell the customer "your lenses are being crafted".
+  // Fires for one-time AND synthesized subscription orders (both reach reviewRx).
+  // Gated only on a real recipient, deduped on (order_id, 'rx_approved').
+  try {
+    const { data: order } = await supabase
+      .from('orders')
+      .select('customer_email, shopify_order_number')
+      .eq('id', rxFile.order_id)
+      .single();
+    const email = order?.customer_email;
+    if (email && email !== 'no-email@shopify.com') {
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://glassyvision.com';
+      await sendOrderEmailOnce({
+        supabase,
+        orderId: rxFile.order_id,
+        customerEmail: email,
+        type: 'rx_approved',
+        rendered: renderRxApproved({ orderNumber: order?.shopify_order_number ?? null, ordersUrl: `${baseUrl}/account/orders` }),
+      });
+    }
+  } catch (e) {
+    console.error('[review-rx] approval email failed', { rxFileId: input.rxFileId, error: e });
   }
 
   return { success: true };

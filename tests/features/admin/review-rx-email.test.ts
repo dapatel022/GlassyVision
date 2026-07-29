@@ -56,7 +56,7 @@ function buildApproveMocks() {
 
   mockFrom.mockImplementation((table: string) => {
     if (table === 'rx_files') return { select: rxFileSelect };
-    if (table === 'rx_reviews') return { insert: reviewInsert };
+    if (table === 'rx_reviews') return { insert: reviewInsert, delete: () => ({ eq: () => Promise.resolve({ error: null }) }) };
     if (table === 'audit_log') return { insert: auditInsert };
     if (table === 'orders') return { update: orderUpdate, select: orderSelect };
     return {};
@@ -146,7 +146,9 @@ describe('reviewRx transactional email', () => {
       notes: null,
     });
 
-    expect(result.success).toBe(true);
+    // The review is now rolled back and the failure surfaced to the admin —
+    // and crucially, no "your lenses are being crafted" email goes out.
+    expect(result.success).toBe(false);
     expect(sendOnce).not.toHaveBeenCalled();
   });
 
