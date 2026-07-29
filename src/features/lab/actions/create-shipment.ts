@@ -120,6 +120,21 @@ export async function createShipment(input: CreateShipmentInput): Promise<{ succ
   }
 
   // --- All gates passed; create the shipment ---------------------------
+  // Atomic claim: the completed_at/shipment_id read above is a fast-path
+  // courtesy check only — two concurrent calls can both pass it. This
+  // conditional update is the real guard: exactly one caller flips
+  // completed_at from NULL and proceeds to create the shipment.
+  const shippedAt = new Date().toISOString();
+  const { data: claimedRows, error: claimError } = await supabase
+    .from('lab_jobs')
+    .update({ completed_at: shippedAt })
+    .eq('id', input.jobId)
+    .is('completed_at', null)
+    .select('id');
+  if (claimError || !claimedRows || claimedRows.length === 0) {
+    return { success: false, error: 'This job has already been shipped' };
+  }
+
   const { data: shipment, error: shipErr } = await supabase
     .from('shipments')
     .insert({
@@ -129,16 +144,20 @@ export async function createShipment(input: CreateShipmentInput): Promise<{ succ
       tracking_number: input.trackingNumber,
       tracking_url: input.trackingUrl ?? null,
       status: 'in_transit',
-      shipped_at: new Date().toISOString(),
+      shipped_at: shippedAt,
     })
     .select('id')
     .single();
 
-  if (shipErr || !shipment) return { success: false, error: 'Failed to create shipment' };
+  if (shipErr || !shipment) {
+    // Release the claim so the job can be retried once the insert issue clears.
+    await supabase.from('lab_jobs').update({ completed_at: null }).eq('id', input.jobId);
+    return { success: false, error: 'Failed to create shipment' };
+  }
 
   await supabase
     .from('lab_jobs')
-    .update({ shipment_id: shipment.id, completed_at: new Date().toISOString() })
+    .update({ shipment_id: shipment.id })
     .eq('id', input.jobId);
 
   await supabase

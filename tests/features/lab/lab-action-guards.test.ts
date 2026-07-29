@@ -36,7 +36,14 @@ function installClient(o: ClientOverrides = {}) {
   const order = 'order' in o ? o.order : { billing_country: 'us' };
 
   const shipmentInsert = o.shipmentInsert ?? vi.fn(() => ({ select: () => ({ single: () => Promise.resolve({ data: { id: 'ship-1' }, error: null }) }) }));
-  const jobUpdate = o.jobUpdate ?? vi.fn(() => ({ eq: () => Promise.resolve({ error: null }) }));
+  // Handles both createShipment's atomic claim chain (.eq().is().select()) and
+  // plain awaited .eq() updates (moveJob, shipment_id backfill).
+  const jobUpdate = o.jobUpdate ?? vi.fn(() => ({
+    eq: () => ({
+      is: () => ({ select: () => Promise.resolve({ data: [{ id: 'job-1' }], error: null }) }),
+      then: (resolve: (v: { error: null }) => void) => resolve({ error: null }),
+    }),
+  }));
   const orderUpdate = o.orderUpdate ?? vi.fn(() => ({ eq: () => Promise.resolve({ error: null }) }));
 
   mockFrom.mockImplementation((table: string) => {

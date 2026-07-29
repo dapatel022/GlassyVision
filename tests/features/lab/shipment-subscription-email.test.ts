@@ -31,7 +31,14 @@ function installClient(opts: { isSubscription: boolean; priorComms?: Array<{ met
       case 'lab_jobs':
         return {
           select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: { id: 'job-1', work_order_id: 'wo-1', column: 'ship', qc_photos: ['qc/1.jpg'] }, error: null }) }) }),
-          update: () => ({ eq: () => Promise.resolve({ error: null }) }),
+          // Handles both the atomic claim chain (.eq().is().select()) and the
+          // plain awaited .eq() follow-up update.
+          update: () => ({
+            eq: () => ({
+              is: () => ({ select: () => Promise.resolve({ data: [{ id: 'job-1' }], error: null }) }),
+              then: (resolve: (v: { error: null }) => void) => resolve({ error: null }),
+            }),
+          }),
         };
       case 'work_orders':
         return { select: () => ({ eq: () => ({ single: () => Promise.resolve({ data: { order_id: 'o-1', line_item_id: 'li-1', rx_file_id: 'rx-1', released_to_lab_at: '2026-05-01T00:00:00Z' }, error: null }) }) }) };
