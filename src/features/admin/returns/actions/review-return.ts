@@ -49,6 +49,20 @@ export async function reviewReturn(input: ReviewReturnInput): Promise<{ success:
 
   if (!orders) return { success: false, error: 'Linked order not found' };
 
+  // Atomic claim: flip pending → in_progress in one conditional UPDATE so two
+  // overlapping submissions (double-click, retry, second tab) cannot both pass
+  // the pending check and each issue a real Shopify refund. The read above is a
+  // courtesy fast-path; this is the guard.
+  const { data: claimed, error: claimError } = await supabase
+    .from('returns')
+    .update({ status: 'in_progress' })
+    .eq('id', input.returnId)
+    .eq('status', 'pending')
+    .select('id');
+  if (claimError || !claimed || claimed.length === 0) {
+    return { success: false, error: 'Return is not pending' };
+  }
+
   // If approved for refund, invoke the Shopify Admin API
   let shopifyRefundId: number | null = null;
   if (input.decision === 'approved_refund') {
@@ -64,6 +78,8 @@ export async function reviewReturn(input: ReviewReturnInput): Promise<{ success:
 
       shopifyRefundId = refundResult?.refund?.id || null;
     } catch (err) {
+      // Release the claim so the admin can retry once Shopify recovers.
+      await supabase.from('returns').update({ status: 'pending' }).eq('id', input.returnId);
       const msg = err instanceof Error ? err.message : 'Unknown error';
       return { success: false, error: `Failed to create refund on Shopify: ${msg}` };
     }
