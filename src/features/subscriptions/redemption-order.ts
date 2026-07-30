@@ -53,6 +53,18 @@ export async function createRedemptionFulfillmentOrder(
   const wantsRx = lensType !== 'non_prescription' && lensType !== 'plano' && lensType !== 'none';
   const hasRxItems = isRxCapable && wantsRx;
 
+  // The synthesized frame line must carry the purchased lens spec in the same
+  // vocabulary as storefront orders: generateWorkOrder hard-fails on an
+  // unmappable lens_type (never silently defaults a prescription spec), so a
+  // NULL here would permanently block the redemption's work order.
+  const lineLensType = hasRxItems ? (lensType === 'progressive' ? 'progressive' : 'single_vision') : 'non_rx';
+  const rawCoatings = (lensConfig as Record<string, unknown>).coatings;
+  const lineCoatings = Array.isArray(rawCoatings)
+    ? rawCoatings.map(String).join(',') || null
+    : typeof rawCoatings === 'string' && rawCoatings.length > 0 ? rawCoatings : null;
+  const rawTint = (lensConfig as Record<string, unknown>).tint;
+  const lineTint = typeof rawTint === 'string' && rawTint.length > 0 ? rawTint : null;
+
   const countryCode = (redemption.ship_to?.country_code ?? '').toLowerCase() || null;
 
   // 2. Synthesized order (no Shopify ids).
@@ -93,6 +105,9 @@ export async function createRedemptionFulfillmentOrder(
       line_total: 0,
       is_rx_required: hasRxItems,
       frame_shape: frameShape,
+      lens_type: lineLensType,
+      coatings: lineCoatings,
+      tint: lineTint,
     })
     .select('id')
     .single();

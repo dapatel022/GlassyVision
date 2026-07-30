@@ -40,7 +40,45 @@ describe('createRedemptionFulfillmentOrder', () => {
     expect(orderInsert).toHaveBeenCalledWith(expect.objectContaining({
       has_rx_items: true, rx_status: 'awaiting_upload', billing_country: 'ca', currency: 'cad',
     }));
-    expect(liInsert).toHaveBeenCalledWith(expect.objectContaining({ is_rx_required: true }));
+    // generateWorkOrder hard-fails on an unmappable lens_type, so the
+    // synthesized frame line MUST carry one (2026-07-29 lens-charging review).
+    expect(liInsert).toHaveBeenCalledWith(expect.objectContaining({ is_rx_required: true, lens_type: 'single_vision' }));
+  });
+
+  it('carries a progressive selection onto the synthesized line item', async () => {
+    const orderInsert = vi.fn(() => ({ select: () => ({ single: () => Promise.resolve({ data: { id: 'ord-p' }, error: null }) }) }));
+    const liInsert = vi.fn(() => ({ select: () => ({ single: () => Promise.resolve({ data: { id: 'li-p' }, error: null }) }) }));
+    from.mockImplementation((t: string) => {
+      if (t === 'product_metadata') return { select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: { sku: 'GV-RX', frame_shape: 'square', is_rx_capable: true }, error: null }) }) }) };
+      if (t === 'orders') return { insert: orderInsert };
+      if (t === 'order_line_items') return { insert: liInsert };
+      return {};
+    });
+    const { createRedemptionFulfillmentOrder } = await import('@/features/subscriptions/redemption-order');
+    await createRedemptionFulfillmentOrder({
+      id: 'rp', frame_variant_id: 333, lens_config: { lens_type: 'progressive', coatings: ['photochromic'], tint: 'grey' }, ship_to: { country_code: 'US' },
+      membership: { customer_id: 'c1', customer_email: 'a@b.com', currency: 'usd' },
+    } as never, { from } as never);
+    expect(liInsert).toHaveBeenCalledWith(expect.objectContaining({
+      lens_type: 'progressive', coatings: 'photochromic', tint: 'grey',
+    }));
+  });
+
+  it('stores non_rx on the line item for a plano selection (non-Rx work-order path)', async () => {
+    const orderInsert = vi.fn(() => ({ select: () => ({ single: () => Promise.resolve({ data: { id: 'ord-n' }, error: null }) }) }));
+    const liInsert = vi.fn(() => ({ select: () => ({ single: () => Promise.resolve({ data: { id: 'li-n' }, error: null }) }) }));
+    from.mockImplementation((t: string) => {
+      if (t === 'product_metadata') return { select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: { sku: 'GV-SUN', frame_shape: 'round', is_rx_capable: true }, error: null }) }) }) };
+      if (t === 'orders') return { insert: orderInsert };
+      if (t === 'order_line_items') return { insert: liInsert };
+      return {};
+    });
+    const { createRedemptionFulfillmentOrder } = await import('@/features/subscriptions/redemption-order');
+    await createRedemptionFulfillmentOrder({
+      id: 'rn2', frame_variant_id: 444, lens_config: { lens_type: 'plano' }, ship_to: { country_code: 'US' },
+      membership: { customer_id: 'c1', customer_email: 'a@b.com', currency: 'usd' },
+    } as never, { from } as never);
+    expect(liInsert).toHaveBeenCalledWith(expect.objectContaining({ is_rx_required: false, lens_type: 'non_rx' }));
   });
 
   it('marks a non-Rx-capable frame as none / not Rx-required', async () => {
