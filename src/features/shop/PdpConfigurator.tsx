@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import type { ShopifyProduct } from '@/lib/commerce/types';
 import type { LensConfig, LensType } from '@/features/cart/types';
+import type { LensPricingMap } from '@/lib/commerce/lens-pricing';
+import { selectedOptionIds } from './lens-options';
 import VariantPicker from './VariantPicker';
 import AddToCartButton from './AddToCartButton';
 import VirtualTryOn from './VirtualTryOn';
@@ -10,12 +12,14 @@ import LensAdvisor from './LensAdvisor';
 
 interface PdpConfiguratorProps {
   product: ShopifyProduct;
+  /** Live Shopify prices for lens upgrades; null = unavailable → paid options fail closed. */
+  lensPricing: LensPricingMap | null;
 }
 
 type WizardStep = 'frame' | 'lens-type' | 'customize';
 type LensCategory = 'clear_rx' | 'sun_rx' | 'blue_light_non_rx' | 'demo_only';
 
-export default function PdpConfigurator({ product }: PdpConfiguratorProps) {
+export default function PdpConfigurator({ product, lensPricing }: PdpConfiguratorProps) {
   const [step, setStep] = useState<WizardStep>('frame');
   const [variantId, setVariantId] = useState(product.variants[0]?.id ?? '');
   const [isVtoOpen, setIsVtoOpen] = useState(false);
@@ -32,12 +36,23 @@ export default function PdpConfigurator({ product }: PdpConfiguratorProps) {
 
   const variant = product.variants.find((v) => v.id === variantId) || product.variants[0];
   const framePrice = Number(variant?.price ?? product.price);
-  // The cart charges the Shopify frame-variant price only. Lens upgrades are not
-  // yet represented as Shopify products, so we MUST NOT add (or display) deltas
-  // the checkout will never collect — doing so showed the customer a higher price
-  // than Shopify charged (2026-06-12 audit C5). Re-introduce per-upgrade pricing
-  // once lens add-on products exist in Shopify and are added as cart line items.
-  const totalPrice = framePrice;
+  // Lens upgrades are charged as Shopify add-on line items at checkout, priced
+  // from the live lensPricing map — so the displayed total matches what Shopify
+  // collects exactly (2026-06-12 audit C5 rule: never show a price checkout
+  // won't charge). With no pricing map, paid options are disabled (fail closed)
+  // so the total stays frame-only and honest.
+  const pricingUnavailable = lensPricing === null;
+  const upgradesTotal = selectedOptionIds(lensConfig).reduce(
+    (sum, id) => sum + (lensPricing?.[id]?.price ?? 0),
+    0,
+  );
+  const totalPrice = framePrice + upgradesTotal;
+
+  /** "+$50" label for a paid option, or null when pricing is unavailable. */
+  function priceLabel(optionId: string): string | null {
+    const p = lensPricing?.[optionId]?.price;
+    return p !== undefined ? `+$${p.toFixed(0)}` : null;
+  }
 
   // Handle category change and map to LensConfig
   function handleCategoryChange(cat: LensCategory) {
@@ -153,10 +168,16 @@ export default function PdpConfigurator({ product }: PdpConfiguratorProps) {
       {step === 'lens-type' && (
         <div className="space-y-4 animate-fade-in-up">
           <h4 className="font-mono text-xs font-bold uppercase text-ink">Select Lens Intent</h4>
+          {pricingUnavailable && (
+            <div role="status" className="p-3 bg-amber-50 border border-amber-300 rounded-lg text-xs text-amber-900">
+              Lens upgrade pricing is temporarily unavailable — only the frame-only option can be ordered right now. Please check back shortly.
+            </div>
+          )}
           <div className="space-y-2.5">
             {/* Category Cards */}
             <button
               onClick={() => handleCategoryChange('clear_rx')}
+              disabled={pricingUnavailable}
               aria-pressed={category === 'clear_rx'}
               className={`w-full p-4 border rounded-xl text-left transition-all flex flex-col justify-between ${
                 category === 'clear_rx' ? 'border-accent bg-accent/[0.02] ring-1 ring-accent' : 'border-line hover:border-accent'
@@ -177,6 +198,7 @@ export default function PdpConfigurator({ product }: PdpConfiguratorProps) {
 
             <button
               onClick={() => handleCategoryChange('sun_rx')}
+              disabled={pricingUnavailable}
               aria-pressed={category === 'sun_rx'}
               className={`w-full p-4 border rounded-xl text-left transition-all flex flex-col justify-between ${
                 category === 'sun_rx' ? 'border-accent bg-accent/[0.02] ring-1 ring-accent' : 'border-line hover:border-accent'
@@ -192,6 +214,7 @@ export default function PdpConfigurator({ product }: PdpConfiguratorProps) {
 
             <button
               onClick={() => handleCategoryChange('blue_light_non_rx')}
+              disabled={pricingUnavailable}
               aria-pressed={category === 'blue_light_non_rx'}
               className={`w-full p-4 border rounded-xl text-left transition-all flex flex-col justify-between ${
                 category === 'blue_light_non_rx' ? 'border-accent bg-accent/[0.02] ring-1 ring-accent' : 'border-line hover:border-accent'
@@ -260,6 +283,7 @@ export default function PdpConfigurator({ product }: PdpConfiguratorProps) {
                     }`}
                   >
                     <p className="text-xs text-ink uppercase">Single Vision</p>
+                    {priceLabel('single_vision') && <p className="text-[10px] text-muted font-mono mt-0.5">{priceLabel('single_vision')}</p>}
                   </button>
                   <button
                     onClick={() => handleLensTypeChange('progressive')}
@@ -269,6 +293,7 @@ export default function PdpConfigurator({ product }: PdpConfiguratorProps) {
                     }`}
                   >
                     <p className="text-xs text-ink uppercase">Progressive</p>
+                    {priceLabel('progressive') && <p className="text-[10px] text-muted font-mono mt-0.5">{priceLabel('progressive')}</p>}
                   </button>
                 </div>
               </div>
@@ -288,6 +313,7 @@ export default function PdpConfigurator({ product }: PdpConfiguratorProps) {
                         }`}
                       >
                         <span className="text-xs text-ink">{t}</span>
+                        {priceLabel(t) && <span className="block text-[10px] text-muted font-mono mt-0.5">{priceLabel(t)}</span>}
                       </button>
                     ))}
                   </div>
@@ -306,6 +332,7 @@ export default function PdpConfigurator({ product }: PdpConfiguratorProps) {
                     }`}
                   >
                     <span className="text-xs text-ink uppercase">Anti-Reflective</span>
+                    {priceLabel('ar') && <span className="text-[10px] text-muted font-mono">{priceLabel('ar')}</span>}
                   </button>
                   <button
                     onClick={() => toggleCoating('photochromic')}
@@ -315,6 +342,7 @@ export default function PdpConfigurator({ product }: PdpConfiguratorProps) {
                     }`}
                   >
                     <span className="text-xs text-ink uppercase">Transitions</span>
+                    {priceLabel('photochromic') && <span className="text-[10px] text-muted font-mono">{priceLabel('photochromic')}</span>}
                   </button>
                 </div>
               </div>
@@ -352,18 +380,31 @@ export default function PdpConfigurator({ product }: PdpConfiguratorProps) {
               ← Back
             </button>
             <div className="flex-2">
-              <AddToCartButton
-                line={{
-                  productId: product.id,
-                  variantId: variant?.id ?? product.id,
-                  productHandle: product.handle,
-                  title: product.title,
-                  image: product.images[0]?.url ?? null,
-                  unitPrice: totalPrice,
-                }}
-                lensConfig={lensConfig}
-                totalPrice={totalPrice}
-              />
+              {pricingUnavailable && selectedOptionIds(lensConfig).length > 0 ? (
+                // Fail closed: never add a line whose upgrades cannot be priced
+                // — /checkout would 409 it anyway; block it here with context.
+                <button
+                  disabled
+                  className="w-full px-6 py-4 bg-accent text-white font-sans font-bold text-sm uppercase tracking-wider rounded-lg opacity-50"
+                >
+                  Upgrade pricing unavailable
+                </button>
+              ) : (
+                <AddToCartButton
+                  line={{
+                    productId: product.id,
+                    variantId: variant?.id ?? product.id,
+                    productHandle: product.handle,
+                    title: product.title,
+                    image: product.images[0]?.url ?? null,
+                    // unitPrice is the FRAME price; upgrades are separate
+                    // Shopify line items priced at checkout.
+                    unitPrice: framePrice,
+                  }}
+                  lensConfig={lensConfig}
+                  totalPrice={totalPrice}
+                />
+              )}
             </div>
           </div>
         </div>

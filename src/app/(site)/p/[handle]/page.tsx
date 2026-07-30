@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { getProductByHandle } from '@/lib/commerce/shopify';
+import { getLensUpgradePricing } from '@/lib/commerce/lens-pricing';
 import { getBanners } from '@/lib/commerce/content';
 import ProductGallery from '@/features/shop/ProductGallery';
 import PdpConfigurator from '@/features/shop/PdpConfigurator';
@@ -49,6 +50,8 @@ export default async function ProductDetailPage({ params }: PageProps) {
   if (!product) notFound();
 
   const pdpBanner = (await getBanners()).pdp?.[0];
+  // Live Shopify prices for lens upgrades; null → configurator fails closed.
+  const lensPricing = await getLensUpgradePricing();
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12">
@@ -85,7 +88,7 @@ export default async function ProductDetailPage({ params }: PageProps) {
 
           {/* Configurator Wizard */}
           <div className="bg-white border border-line rounded-2xl p-6 shadow-sm">
-            <PdpConfigurator product={product} />
+            <PdpConfigurator product={product} lensPricing={lensPricing} />
           </div>
 
           {/* Technical Specs Detail Table */}

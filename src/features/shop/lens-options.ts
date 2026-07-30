@@ -1,29 +1,31 @@
 import type { LensType, LensConfig } from '@/features/cart/types';
 
+// Option METADATA only. Prices live in Shopify (the hidden `lens-upgrades`
+// product, one variant per option id) and are fetched at render time via
+// getLensUpgradePricing() — never hardcoded here.
 export interface LensOption {
   id: string;
   label: string;
-  priceDelta: number;
   description?: string;
 }
 
 export const LENS_TYPES: Array<LensOption & { id: LensType; rxRequired: boolean }> = [
-  { id: 'non_rx', label: 'Non-prescription', priceDelta: 0, rxRequired: false, description: 'Plano lenses, no Rx needed' },
-  { id: 'single_vision', label: 'Single-vision Rx', priceDelta: 50, rxRequired: true, description: 'Distance or reading' },
-  { id: 'progressive', label: 'Progressive Rx', priceDelta: 150, rxRequired: true, description: 'Seamless distance + reading' },
+  { id: 'non_rx', label: 'Non-prescription', rxRequired: false, description: 'Plano lenses, no Rx needed' },
+  { id: 'single_vision', label: 'Single-vision Rx', rxRequired: true, description: 'Distance or reading' },
+  { id: 'progressive', label: 'Progressive Rx', rxRequired: true, description: 'Seamless distance + reading' },
 ];
 
 export const COATINGS: LensOption[] = [
-  { id: 'ar', label: 'Anti-reflective', priceDelta: 30 },
-  { id: 'blue_light', label: 'Blue-light filter', priceDelta: 25 },
-  { id: 'photochromic', label: 'Photochromic (Transitions)', priceDelta: 85 },
+  { id: 'ar', label: 'Anti-reflective' },
+  { id: 'blue_light', label: 'Blue-light filter' },
+  { id: 'photochromic', label: 'Photochromic (Transitions)' },
 ];
 
 export const TINTS: LensOption[] = [
-  { id: 'none', label: 'Clear', priceDelta: 0 },
-  { id: 'grey', label: 'Grey', priceDelta: 40 },
-  { id: 'amber', label: 'Amber', priceDelta: 40 },
-  { id: 'green', label: 'G-15 Green', priceDelta: 40 },
+  { id: 'none', label: 'Clear' },
+  { id: 'grey', label: 'Grey' },
+  { id: 'amber', label: 'Amber' },
+  { id: 'green', label: 'G-15 Green' },
 ];
 
 /**

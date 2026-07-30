@@ -2,8 +2,18 @@
 
 import Link from 'next/link';
 import type { CartLine } from './types';
-import { LENS_TYPES, COATINGS, TINTS } from '@/features/shop/lens-options';
+import type { LensPricingMap } from '@/lib/commerce/lens-pricing';
+import { LENS_TYPES, COATINGS, TINTS, selectedOptionIds } from '@/features/shop/lens-options';
 import { useCart } from '@/context/CartContext';
+
+function optionLabel(id: string): string {
+  return (
+    LENS_TYPES.find((t) => t.id === id)?.label ??
+    COATINGS.find((c) => c.id === id)?.label ??
+    TINTS.find((t) => t.id === id)?.label ??
+    id
+  );
+}
 
 function describeLens(config: CartLine['lensConfig']): string {
   const type = LENS_TYPES.find((t) => t.id === config.lensType)?.label ?? config.lensType;
@@ -17,8 +27,13 @@ function describeLens(config: CartLine['lensConfig']): string {
   return parts.join(' · ');
 }
 
-export default function CartLineItem({ line }: { line: CartLine }) {
+export default function CartLineItem({ line, pricing }: { line: CartLine; pricing: LensPricingMap | null }) {
   const { updateQty, removeLine } = useCart();
+  const upgrades = selectedOptionIds(line.lensConfig);
+  const lineTotal = upgrades.reduce(
+    (sum, id) => sum + (pricing?.[id]?.price ?? 0) * line.quantity,
+    line.unitPrice * line.quantity,
+  );
 
   return (
     <div className="flex gap-4 p-4 border border-line rounded-xl bg-white">
@@ -36,6 +51,16 @@ export default function CartLineItem({ line }: { line: CartLine }) {
           <button onClick={() => removeLine(line.variantId)} className="text-xs text-muted hover:text-error">Remove</button>
         </div>
         <p className="text-xs text-muted mt-1">{describeLens(line.lensConfig)}</p>
+        {upgrades.length > 0 && (
+          <ul className="mt-1 space-y-0.5">
+            {upgrades.map((id) => (
+              <li key={id} className="text-[11px] text-muted-soft font-mono flex justify-between max-w-[240px]">
+                <span>+ {optionLabel(id)}</span>
+                <span>{pricing?.[id] ? `$${(pricing[id].price * line.quantity).toFixed(0)}` : 'at checkout'}</span>
+              </li>
+            ))}
+          </ul>
+        )}
         <div className="flex items-center justify-between mt-3">
           <div className="flex items-center gap-2">
             <button
@@ -54,7 +79,7 @@ export default function CartLineItem({ line }: { line: CartLine }) {
               +
             </button>
           </div>
-          <p className="font-mono text-sm text-ink">${(line.unitPrice * line.quantity).toFixed(0)}</p>
+          <p className="font-mono text-sm text-ink">${lineTotal.toFixed(0)}</p>
         </div>
       </div>
     </div>

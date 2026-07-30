@@ -17,7 +17,9 @@ export default function AddToCartButton({ line, lensConfig, totalPrice }: AddToC
   const [added, setAdded] = useState(false);
 
   function handleAdd() {
-    addLine({ ...line, quantity: 1, lensConfig, unitPrice: totalPrice });
+    // line.unitPrice is the frame price; totalPrice (frame + upgrades) is
+    // display-only — upgrades are charged as their own Shopify line items.
+    addLine({ ...line, quantity: 1, lensConfig });
     setAdded(true);
     setTimeout(() => router.push('/cart'), 400);
   }
