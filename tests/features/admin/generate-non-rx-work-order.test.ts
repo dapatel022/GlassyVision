@@ -20,8 +20,11 @@ function installClient(opts: {
   financialStatus?: string;
   country?: string;
   existingWo?: { id: string; work_order_number: string } | null;
+  addonForRef?: string | null;
+  coatings?: string | null;
+  tint?: string | null;
 } = {}) {
-  const { isRxRequired = false, financialStatus = 'paid', country = 'US', existingWo = null } = opts;
+  const { isRxRequired = false, financialStatus = 'paid', country = 'US', existingWo = null, addonForRef = null, coatings = null, tint = null } = opts;
   const workOrderInsert = vi.fn((_row: Record<string, unknown>) => ({
     select: vi.fn(() => ({ single: vi.fn(() => Promise.resolve({ data: { id: 'wo-9', work_order_number: 'WO-202606-009' }, error: null })) })),
   }));
@@ -30,6 +33,7 @@ function installClient(opts: {
     if (table === 'order_line_items') return {
       select: () => ({ eq: () => ({ single: () => Promise.resolve({ data: {
         id: 'li-1', order_id: 'o-1', sku: 'GV-SUN-01', product_title: 'Sun', frame_shape: 'square', frame_color: 'black', frame_size: 'M', is_rx_required: isRxRequired,
+        addon_for_ref: addonForRef, coatings, tint,
         orders: { financial_status: financialStatus, billing_country: country.toLowerCase(), shipping_address: { country_code: country } },
       }, error: null }) }) }),
     };
@@ -109,5 +113,24 @@ describe('generateNonRxWorkOrder', () => {
     expect(result.success).toBe(true);
     if (result.success) expect(result.workOrderId).toBe('wo-existing');
     expect(workOrderInsert).not.toHaveBeenCalled();
+  });
+
+  it('refuses lens-upgrade add-on line items (charge carriers, not fulfillable units)', async () => {
+    const { workOrderInsert } = installClient({ addonForRef: 'ref-1' });
+    const { generateNonRxWorkOrder } = await import('@/features/admin/actions/generate-non-rx-work-order');
+    const result = await generateNonRxWorkOrder('li-1');
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error).toBe('Add-on line items are not fulfillable');
+    expect(workOrderInsert).not.toHaveBeenCalled();
+  });
+
+  it('carries the purchased tint/coatings onto the work order (tinted sunglasses)', async () => {
+    const { workOrderInsert } = installClient({ coatings: 'blue_light', tint: 'grey' });
+    const { generateNonRxWorkOrder } = await import('@/features/admin/actions/generate-non-rx-work-order');
+    const result = await generateNonRxWorkOrder('li-1');
+    expect(result.success).toBe(true);
+    const row = (workOrderInsert.mock.calls[0] as unknown[])[0] as { tint: string; coatings: unknown };
+    expect(row.tint).toBe('grey');
+    expect(row.coatings).toEqual(['blue_light']);
   });
 });

@@ -36,7 +36,10 @@ export async function getNonRxQueueItems(supabase: SupabaseClient): Promise<NonR
   const { data: candidates } = await supabase
     .from('order_line_items')
     .select('id, order_id, sku, product_title, is_rx_required, orders ( shopify_order_number, financial_status, fulfillment_status, shipping_address )')
-    .eq('is_rx_required', false);
+    .eq('is_rx_required', false)
+    // Lens-upgrade add-on lines are charge carriers paired to a frame line —
+    // never fulfillable units, so they must not appear in this queue.
+    .is('addon_for_ref', null);
 
   const rows = (candidates ?? []) as unknown as CandidateRow[];
 

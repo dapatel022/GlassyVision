@@ -32,11 +32,17 @@ export async function generateNonRxWorkOrder(lineItemId: string): Promise<Genera
 
   const { data: li, error: liErr } = await supabase
     .from('order_line_items')
-    .select('id, order_id, sku, product_title, frame_shape, frame_color, frame_size, is_rx_required, orders ( financial_status, billing_country, shipping_address )')
+    .select('id, order_id, sku, product_title, frame_shape, frame_color, frame_size, is_rx_required, addon_for_ref, coatings, tint, orders ( financial_status, billing_country, shipping_address )')
     .eq('id', lineItemId)
     .single();
 
   if (liErr || !li) return { success: false, error: 'Line item not found' };
+
+  // Lens-upgrade add-on lines are charge carriers paired to a frame line —
+  // the physical work ships with the frame's work order, never standalone.
+  if (li.addon_for_ref) {
+    return { success: false, error: 'Add-on line items are not fulfillable' };
+  }
 
   const order = (li as unknown as {
     orders: { financial_status: string | null; billing_country: string | null; shipping_address: unknown } | null;
@@ -87,8 +93,8 @@ export async function generateNonRxWorkOrder(lineItemId: string): Promise<Genera
       frame_size: li.frame_size,
       lens_type: 'non_prescription',
       lens_material: 'cr39',
-      coatings: [] as unknown as Json,
-      tint: 'none',
+      coatings: (li.coatings && li.coatings !== 'none' ? li.coatings.split(',') : []) as unknown as Json,
+      tint: li.tint ?? 'none',
       released_to_lab_at: new Date().toISOString(),
     })
     .select('id, work_order_number')

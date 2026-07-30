@@ -3,25 +3,34 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const mockFrom = vi.fn();
 function makeClient() { return { from: mockFrom }; }
 
-beforeEach(() => mockFrom.mockReset());
+const isFilter = vi.fn();
+
+/** The queue query is .select().eq('is_rx_required', false).is('addon_for_ref', null). */
+function lineItemsTable(rows: unknown[]) {
+  isFilter.mockImplementation(() => Promise.resolve({ data: rows, error: null }));
+  return { select: () => ({ eq: () => ({ is: isFilter }) }) };
+}
+
+beforeEach(() => {
+  mockFrom.mockReset();
+  isFilter.mockReset();
+});
 
 describe('getNonRxQueueItems', () => {
-  it('returns paid non-Rx line items that have no work order yet', async () => {
+  it('returns paid non-Rx line items that have no work order yet, excluding add-ons at the query level', async () => {
     mockFrom.mockImplementation((table: string) => {
-      if (table === 'order_line_items') return {
-        select: () => ({ eq: () => Promise.resolve({ data: [
-          { id: 'li-1', order_id: 'o-1', sku: 'GV-SUN', product_title: 'Sun', is_rx_required: false,
-            orders: { shopify_order_number: '1001', financial_status: 'paid', fulfillment_status: 'unfulfilled', shipping_address: { country_code: 'US' } } },
-          { id: 'li-2', order_id: 'o-2', sku: 'GV-SUN2', product_title: 'Sun2', is_rx_required: false,
-            orders: { shopify_order_number: '1002', financial_status: 'paid', fulfillment_status: 'unfulfilled', shipping_address: { country_code: 'CA' } } },
-          // unpaid → excluded
-          { id: 'li-3', order_id: 'o-3', sku: 'GV-SUN3', product_title: 'Sun3', is_rx_required: false,
-            orders: { shopify_order_number: '1003', financial_status: 'pending', fulfillment_status: 'unfulfilled', shipping_address: { country_code: 'US' } } },
-          // already shipped → excluded
-          { id: 'li-4', order_id: 'o-4', sku: 'GV-SUN4', product_title: 'Sun4', is_rx_required: false,
-            orders: { shopify_order_number: '1004', financial_status: 'paid', fulfillment_status: 'shipped', shipping_address: { country_code: 'US' } } },
-        ], error: null }) }),
-      };
+      if (table === 'order_line_items') return lineItemsTable([
+        { id: 'li-1', order_id: 'o-1', sku: 'GV-SUN', product_title: 'Sun', is_rx_required: false,
+          orders: { shopify_order_number: '1001', financial_status: 'paid', fulfillment_status: 'unfulfilled', shipping_address: { country_code: 'US' } } },
+        { id: 'li-2', order_id: 'o-2', sku: 'GV-SUN2', product_title: 'Sun2', is_rx_required: false,
+          orders: { shopify_order_number: '1002', financial_status: 'paid', fulfillment_status: 'unfulfilled', shipping_address: { country_code: 'CA' } } },
+        // unpaid → excluded
+        { id: 'li-3', order_id: 'o-3', sku: 'GV-SUN3', product_title: 'Sun3', is_rx_required: false,
+          orders: { shopify_order_number: '1003', financial_status: 'pending', fulfillment_status: 'unfulfilled', shipping_address: { country_code: 'US' } } },
+        // already shipped → excluded
+        { id: 'li-4', order_id: 'o-4', sku: 'GV-SUN4', product_title: 'Sun4', is_rx_required: false,
+          orders: { shopify_order_number: '1004', financial_status: 'paid', fulfillment_status: 'shipped', shipping_address: { country_code: 'US' } } },
+      ]);
       // li-2 already has a non-Rx work order → must be excluded.
       if (table === 'work_orders') return {
         select: () => ({ eq: () => ({ in: () => Promise.resolve({ data: [{ line_item_id: 'li-2' }], error: null }) }) }),
@@ -33,11 +42,14 @@ describe('getNonRxQueueItems', () => {
     const items = await getNonRxQueueItems(makeClient() as never);
     expect(items.map((i) => i.lineItemId)).toEqual(['li-1']);
     expect(items[0]).toMatchObject({ orderId: 'o-1', orderNumber: '1001', country: 'US' });
+    // Lens-upgrade add-on lines are charge carriers, not fulfillable units —
+    // they must be excluded in the query itself.
+    expect(isFilter).toHaveBeenCalledWith('addon_for_ref', null);
   });
 
   it('returns an empty list when no non-Rx line items are waiting', async () => {
     mockFrom.mockImplementation((table: string) => {
-      if (table === 'order_line_items') return { select: () => ({ eq: () => Promise.resolve({ data: [], error: null }) }) };
+      if (table === 'order_line_items') return lineItemsTable([]);
       if (table === 'work_orders') return { select: () => ({ eq: () => ({ in: () => Promise.resolve({ data: [], error: null }) }) }) };
       return {};
     });
