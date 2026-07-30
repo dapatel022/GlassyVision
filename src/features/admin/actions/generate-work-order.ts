@@ -43,7 +43,7 @@ export async function generateWorkOrder(rxFileId: string): Promise<GenerateWorkO
       typed_od_prism, typed_od_base, typed_os_prism, typed_os_base,
       typed_pd, typed_pd_type,
       rx_reviews (decision, reviewed_at),
-      order_line_items!inner (id, sku, product_title, frame_shape, frame_color, frame_size)
+      order_line_items!inner (id, sku, product_title, frame_shape, frame_color, frame_size, lens_type, coatings, tint)
     `)
     .eq('id', rxFileId)
     .single();
@@ -101,8 +101,20 @@ export async function generateWorkOrder(rxFileId: string): Promise<GenerateWorkO
   }
 
   const lineItem = (rxFile as unknown as {
-    order_line_items: { id: string; sku: string | null; product_title: string; frame_shape: string | null; frame_color: string | null; frame_size: string | null };
+    order_line_items: { id: string; sku: string | null; product_title: string; frame_shape: string | null; frame_color: string | null; frame_size: string | null; lens_type: string | null; coatings: string | null; tint: string | null };
   }).order_line_items;
+
+  // The work order must carry the lens spec the customer actually purchased
+  // (persisted by the order-sync webhook from checkout properties). A missing
+  // or unmappable type fails loudly — never cut a prescription against a
+  // silently defaulted spec.
+  const LENS_TYPE_MAP: Record<string, LensType> = { single_vision: 'single_vision', progressive: 'progressive' };
+  const mappedLensType = LENS_TYPE_MAP[lineItem.lens_type ?? ''];
+  if (!mappedLensType) {
+    return { success: false, error: `Cannot generate work order: unknown lens type '${lineItem.lens_type ?? 'missing'}' on line item` };
+  }
+  const purchasedCoatings = lineItem.coatings && lineItem.coatings !== 'none' ? lineItem.coatings.split(',') : [];
+  const purchasedTint = lineItem.tint ?? 'none';
 
   const { count } = await supabase
     .from('work_orders')
@@ -112,8 +124,7 @@ export async function generateWorkOrder(rxFileId: string): Promise<GenerateWorkO
   const workOrderNumber = buildWorkOrderNumber((count ?? 0) + 1);
   const { od: pdOd, os: pdOs } = splitPd(rxFile.typed_pd, rxFile.typed_pd_type);
 
-  const lensType: LensType = 'single_vision';
-  const lensMaterial: LensMaterial = 'cr39';
+  const lensMaterial: LensMaterial = 'cr39'; // only material offered in phase 1
 
   const { data: inserted, error: insertError } = await supabase
     .from('work_orders')
@@ -126,10 +137,10 @@ export async function generateWorkOrder(rxFileId: string): Promise<GenerateWorkO
       frame_shape: lineItem.frame_shape,
       frame_color: lineItem.frame_color,
       frame_size: lineItem.frame_size,
-      lens_type: lensType,
+      lens_type: mappedLensType,
       lens_material: lensMaterial,
-      coatings: [] as unknown as Json,
-      tint: 'none',
+      coatings: purchasedCoatings as unknown as Json,
+      tint: purchasedTint,
       monocular_pd_od: pdOd,
       monocular_pd_os: pdOs,
       axis_double_entered: !!(rxFile.typed_od_axis || rxFile.typed_os_axis),

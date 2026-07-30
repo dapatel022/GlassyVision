@@ -17,6 +17,7 @@ vi.mock('@/lib/auth/middleware', () => ({
 function buildRxFileRead(
   reviewDecision: 'approved' | 'rejected' | null = 'approved',
   image: { storage_path: string | null; deleted_at: string | null } = { storage_path: 'rx/1.jpg', deleted_at: null },
+  lensSpec: Record<string, string | null> = {},
 ) {
   return vi.fn(() => ({
     eq: vi.fn(() => ({
@@ -43,6 +44,11 @@ function buildRxFileRead(
             frame_shape: 'round',
             frame_color: 'black',
             frame_size: 'M',
+            // Purchased lens spec (persisted by sync from checkout properties).
+            lens_type: 'single_vision',
+            coatings: null,
+            tint: null,
+            ...lensSpec,
           },
         },
         error: null,
@@ -124,6 +130,7 @@ describe('generateWorkOrder', () => {
             order_line_items: {
               id: 'line-2', sku: 'GV-002-BLACK-M', product_title: 'Test Frame 2',
               frame_shape: 'oval', frame_color: 'tortoise', frame_size: 'L',
+              lens_type: 'single_vision', coatings: null, tint: null,
             },
           },
           error: null,
@@ -229,7 +236,7 @@ describe('generateWorkOrder', () => {
               { decision: 'rejected', reviewed_at: '2026-05-10T00:00:00Z' },
               { decision: 'approved', reviewed_at: '2026-05-01T00:00:00Z' },
             ],
-            order_line_items: { id: 'line-1', sku: 'GV-1', product_title: 'F', frame_shape: null, frame_color: null, frame_size: null },
+            order_line_items: { id: 'line-1', sku: 'GV-1', product_title: 'F', frame_shape: null, frame_color: null, frame_size: null, lens_type: 'single_vision', coatings: null, tint: null },
           },
           error: null,
         })),
@@ -276,7 +283,7 @@ describe('generateWorkOrder', () => {
             typed_os_sphere: null, typed_os_cylinder: null, typed_os_axis: null, typed_os_add: null,
             typed_pd: '63', typed_pd_type: 'binocular',
             rx_reviews: [{ decision: 'approved', reviewed_at: '2026-05-01T00:00:00Z' }],
-            order_line_items: { id: 'line-1', sku: 'GV-1', product_title: 'F', frame_shape: null, frame_color: null, frame_size: null },
+            order_line_items: { id: 'line-1', sku: 'GV-1', product_title: 'F', frame_shape: null, frame_color: null, frame_size: null, lens_type: 'single_vision', coatings: null, tint: null },
           },
           error: null,
         })),
@@ -293,6 +300,57 @@ describe('generateWorkOrder', () => {
 
     expect(result.success).toBe(false);
     if (!result.success) expect(result.error).toMatch(/expired/i);
+    expect(workOrderInsert).not.toHaveBeenCalled();
+  });
+
+  it('carries the purchased lens spec (progressive + coatings + tint) onto the work order', async () => {
+    const workOrderInsert = vi.fn(() => ({
+      select: vi.fn(() => ({
+        single: vi.fn(() => Promise.resolve({ data: { id: 'wo-3', work_order_number: 'WO-202607-003' }, error: null })),
+      })),
+    }));
+    const workOrdersSelect = vi.fn(() => ({
+      eq: vi.fn(() => ({ maybeSingle: vi.fn(() => Promise.resolve({ data: null, error: null })) })),
+      gte: vi.fn(() => Promise.resolve({ data: [], error: null, count: 0 })),
+    }));
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'rx_files') return { select: buildRxFileRead('approved', { storage_path: 'rx/1.jpg', deleted_at: null }, { lens_type: 'progressive', coatings: 'ar,blue_light', tint: 'grey' }) };
+      if (table === 'orders') return { select: () => ({ eq: () => ({ single: () => Promise.resolve({ data: { billing_country: 'us', shipping_address: { country_code: 'US' } }, error: null }) }) }) };
+      if (table === 'work_orders') return { insert: workOrderInsert, select: workOrdersSelect };
+      if (table === 'lab_jobs') return { insert: vi.fn(() => Promise.resolve({ error: null })) };
+      if (table === 'audit_log') return { insert: vi.fn(() => Promise.resolve({ error: null })) };
+      if (table === 'subscription_redemptions') return { update: () => ({ eq: () => ({ select: () => Promise.resolve({ data: [], error: null }) }) }) };
+      return {};
+    });
+
+    const { generateWorkOrder } = await import('@/features/admin/actions/generate-work-order');
+    const result = await generateWorkOrder('rx-1');
+
+    expect(result.success).toBe(true);
+    const row = (workOrderInsert.mock.calls[0] as unknown[])[0] as { lens_type: string; coatings: unknown; tint: string };
+    expect(row.lens_type).toBe('progressive');
+    expect(row.coatings).toEqual(['ar', 'blue_light']);
+    expect(row.tint).toBe('grey');
+  });
+
+  it('refuses loudly when the line item has no mappable lens type (never default a prescription spec)', async () => {
+    const workOrderInsert = vi.fn();
+    const workOrdersSelect = vi.fn(() => ({
+      eq: vi.fn(() => ({ maybeSingle: vi.fn(() => Promise.resolve({ data: null, error: null })) })),
+      gte: vi.fn(() => Promise.resolve({ data: [], error: null, count: 0 })),
+    }));
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'rx_files') return { select: buildRxFileRead('approved', { storage_path: 'rx/1.jpg', deleted_at: null }, { lens_type: null }) };
+      if (table === 'orders') return { select: () => ({ eq: () => ({ single: () => Promise.resolve({ data: { billing_country: 'us', shipping_address: { country_code: 'US' } }, error: null }) }) }) };
+      if (table === 'work_orders') return { insert: workOrderInsert, select: workOrdersSelect };
+      return {};
+    });
+
+    const { generateWorkOrder } = await import('@/features/admin/actions/generate-work-order');
+    const result = await generateWorkOrder('rx-1');
+
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error).toContain('lens type');
     expect(workOrderInsert).not.toHaveBeenCalled();
   });
 });
