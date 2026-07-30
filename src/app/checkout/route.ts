@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { randomUUID } from 'crypto';
 import { createCart } from '@/lib/commerce/shopify';
-import { lensRequiresRx } from '@/features/shop/lens-options';
+import { lensRequiresRx, selectedOptionIds } from '@/features/shop/lens-options';
+import { getLensUpgradePricing } from '@/lib/commerce/lens-pricing';
 import type { CartLine } from '@/features/cart/types';
 
 export async function POST(request: NextRequest) {
@@ -11,22 +13,55 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Cart is empty' }, { status: 400 });
   }
 
-  try {
-    const cart = await createCart(
-      lines.map((l) => ({
-        merchandiseId: l.variantId,
+  // Lens upgrades are charged as separate line items paired to their frame
+  // line. Selection is re-derived server-side from lensConfig and priced from
+  // Shopify — the client is never trusted with prices or variant ids.
+  const needsPricing = lines.some((l) => selectedOptionIds(l.lensConfig).length > 0);
+  const pricing = needsPricing ? await getLensUpgradePricing() : null;
+
+  const cartLines: Array<{ merchandiseId: string; quantity: number; attributes: Array<{ key: string; value: string }> }> = [];
+
+  for (const l of lines) {
+    const lineRef = randomUUID();
+    cartLines.push({
+      merchandiseId: l.variantId,
+      quantity: l.quantity,
+      attributes: [
+        // is_rx_required is the authoritative signal the order-sync webhook
+        // reads to flag the order for the Rx pipeline. lens_type/coatings/tint
+        // ride along for the lab job sheet; line_ref pairs add-on lines below.
+        { key: 'is_rx_required', value: String(lensRequiresRx(l.lensConfig)) },
+        { key: 'lens_type', value: l.lensConfig.lensType },
+        { key: 'coatings', value: l.lensConfig.coatings.join(',') || 'none' },
+        { key: 'tint', value: l.lensConfig.tint },
+        { key: 'line_ref', value: lineRef },
+      ],
+    });
+
+    for (const optionId of selectedOptionIds(l.lensConfig)) {
+      const upgrade = pricing?.[optionId];
+      if (!upgrade) {
+        // FAIL CLOSED: a paid upgrade we cannot resolve to a Shopify variant
+        // must never be silently dropped (that is the free-upgrade leak).
+        console.error('[checkout] unresolvable lens upgrade — blocking checkout', { optionId, pricingAvailable: pricing !== null });
+        return NextResponse.json(
+          { error: 'Lens upgrade pricing is unavailable — please try again shortly' },
+          { status: 409 },
+        );
+      }
+      cartLines.push({
+        merchandiseId: upgrade.variantId,
         quantity: l.quantity,
         attributes: [
-          // is_rx_required is the authoritative signal the order-sync webhook
-          // reads to flag the order for the Rx pipeline. lens_type/coatings/tint
-          // ride along for the lab job sheet.
-          { key: 'is_rx_required', value: String(lensRequiresRx(l.lensConfig)) },
-          { key: 'lens_type', value: l.lensConfig.lensType },
-          { key: 'coatings', value: l.lensConfig.coatings.join(',') || 'none' },
-          { key: 'tint', value: l.lensConfig.tint },
+          { key: '_addon_for', value: lineRef },
+          { key: 'is_rx_required', value: 'false' },
         ],
-      })),
-    );
+      });
+    }
+  }
+
+  try {
+    const cart = await createCart(cartLines);
 
     const response = NextResponse.json({ checkoutUrl: cart.checkoutUrl, cartId: cart.id });
     response.cookies.set('gv_cart_id', cart.id, {

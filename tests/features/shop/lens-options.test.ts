@@ -1,34 +1,27 @@
 import { describe, it, expect } from 'vitest';
-import { lensDelta, lensRequiresRx, DEFAULT_LENS_CONFIG } from '@/features/shop/lens-options';
+import { selectedOptionIds, lensRequiresRx, DEFAULT_LENS_CONFIG } from '@/features/shop/lens-options';
 
 describe('lens-options', () => {
-  it('default config has zero delta and no Rx', () => {
-    expect(lensDelta(DEFAULT_LENS_CONFIG)).toBe(0);
+  it('default config selects no paid options and requires no Rx', () => {
+    expect(selectedOptionIds(DEFAULT_LENS_CONFIG)).toEqual([]);
     expect(lensRequiresRx(DEFAULT_LENS_CONFIG)).toBe(false);
   });
 
-  it('single-vision Rx adds 50', () => {
-    expect(lensDelta({ lensType: 'single_vision', coatings: [], tint: 'none' })).toBe(50);
+  it('Rx lens types are paid options and require an Rx', () => {
+    expect(selectedOptionIds({ lensType: 'single_vision', coatings: [], tint: 'none' })).toEqual(['single_vision']);
     expect(lensRequiresRx({ lensType: 'single_vision', coatings: [], tint: 'none' })).toBe(true);
+    expect(selectedOptionIds({ lensType: 'progressive', coatings: [], tint: 'none' })).toEqual(['progressive']);
   });
 
-  it('progressive Rx adds 150', () => {
-    expect(lensDelta({ lensType: 'progressive', coatings: [], tint: 'none' })).toBe(150);
-  });
-
-  it('sums coatings and tint', () => {
-    expect(lensDelta({
+  it('collects lens type, every coating, and a non-clear tint in order', () => {
+    expect(selectedOptionIds({
       lensType: 'single_vision',
       coatings: ['ar', 'blue_light'],
       tint: 'grey',
-    })).toBe(50 + 30 + 25 + 40);
+    })).toEqual(['single_vision', 'ar', 'blue_light', 'grey']);
   });
 
-  it('unknown option ids contribute 0', () => {
-    expect(lensDelta({
-      lensType: 'single_vision',
-      coatings: ['nonexistent'],
-      tint: 'invalid',
-    })).toBe(50);
+  it('non_rx and clear tint are free — never emitted as options', () => {
+    expect(selectedOptionIds({ lensType: 'non_rx', coatings: ['photochromic'], tint: 'none' })).toEqual(['photochromic']);
   });
 });

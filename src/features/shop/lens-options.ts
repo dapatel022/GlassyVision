@@ -26,14 +26,17 @@ export const TINTS: LensOption[] = [
   { id: 'green', label: 'G-15 Green', priceDelta: 40 },
 ];
 
-export function lensDelta(config: LensConfig): number {
-  const typeDelta = LENS_TYPES.find((t) => t.id === config.lensType)?.priceDelta ?? 0;
-  const coatingDelta = config.coatings.reduce(
-    (sum, c) => sum + (COATINGS.find((o) => o.id === c)?.priceDelta ?? 0),
-    0,
-  );
-  const tintDelta = TINTS.find((t) => t.id === config.tint)?.priceDelta ?? 0;
-  return typeDelta + coatingDelta + tintDelta;
+/**
+ * The paid upgrade option ids a lens configuration selects. `non_rx` and the
+ * clear tint are free and produce no add-on line item. Prices for these ids
+ * come from Shopify via getLensUpgradePricing() — never from code.
+ */
+export function selectedOptionIds(config: LensConfig): string[] {
+  return [
+    ...(config.lensType !== 'non_rx' ? [config.lensType] : []),
+    ...config.coatings,
+    ...(config.tint !== 'none' ? [config.tint] : []),
+  ];
 }
 
 export function lensRequiresRx(config: LensConfig): boolean {
