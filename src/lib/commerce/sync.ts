@@ -203,6 +203,11 @@ export async function syncShopifyOrder(
       let frameShape: string | null = null;
       let frameColor: string | null = null;
       let frameSize: string | null = null;
+      let lineRef: string | null = null;
+      let addonForRef: string | null = null;
+      let lensTypeRaw: string | null = null;
+      let coatingsRaw: string | null = null;
+      let tintRaw: string | null = null;
 
       // Scan properties array. Normalize the property NAME (strip case and any
       // non-alphanumerics) so 'lens_type', 'lensType', '_lensType' and 'lenstype'
@@ -214,10 +219,15 @@ export async function syncShopifyOrder(
           const value = String(prop.value).toLowerCase();
 
           if (name === 'lenstype') {
+            lensTypeRaw = prop.value;
             if (value === 'single_vision' || value === 'progressive') {
               isRxRequired = true;
             }
           }
+          if (name === 'lineref') lineRef = prop.value;
+          if (name === 'addonfor') addonForRef = prop.value;
+          if (name === 'coatings') coatingsRaw = prop.value;
+          if (name === 'tint') tintRaw = prop.value;
           if (name === 'isrxrequired') {
             if (value === 'true' || value === 'yes' || value === '1') {
               isRxRequired = true;
@@ -239,6 +249,17 @@ export async function syncShopifyOrder(
         }
       }
 
+      // Lens-upgrade add-on lines (paired to a frame line at checkout) are
+      // charge carriers only: they never enter the Rx pipeline, the non-Rx
+      // fulfillment queue, or work-order generation. Detect by the checkout-
+      // minted _addon_for property, or by SKU prefix for manually created
+      // Shopify orders.
+      const isAddon = addonForRef !== null || (item.sku ?? '').startsWith('LENSUP-');
+      if (isAddon) {
+        addonForRef = addonForRef ?? 'sku';
+        isRxRequired = false;
+      }
+
       if (isRxRequired) {
         hasRxItems = true;
       }
@@ -257,6 +278,11 @@ export async function syncShopifyOrder(
         frame_shape: frameShape,
         frame_color: frameColor,
         frame_size: frameSize,
+        line_ref: isAddon ? null : lineRef,
+        addon_for_ref: addonForRef,
+        lens_type: isAddon ? null : lensTypeRaw,
+        coatings: isAddon ? null : coatingsRaw,
+        tint: isAddon ? null : tintRaw,
       });
     }
 

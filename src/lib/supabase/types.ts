@@ -216,6 +216,11 @@ export type Database = {
           frame_shape: string | null;
           frame_color: string | null;
           frame_size: string | null;
+          line_ref: string | null;
+          addon_for_ref: string | null;
+          lens_type: string | null;
+          coatings: string | null;
+          tint: string | null;
         };
         Insert: {
           id?: string;
@@ -234,6 +239,11 @@ export type Database = {
           frame_shape?: string | null;
           frame_color?: string | null;
           frame_size?: string | null;
+          line_ref?: string | null;
+          addon_for_ref?: string | null;
+          lens_type?: string | null;
+          coatings?: string | null;
+          tint?: string | null;
         };
         Update: {
           id?: string;
@@ -252,6 +262,11 @@ export type Database = {
           frame_shape?: string | null;
           frame_color?: string | null;
           frame_size?: string | null;
+          line_ref?: string | null;
+          addon_for_ref?: string | null;
+          lens_type?: string | null;
+          coatings?: string | null;
+          tint?: string | null;
         };
         Relationships: [
           { foreignKeyName: 'order_line_items_order_id_fkey'; columns: ['order_id']; referencedRelation: 'orders'; referencedColumns: ['id'] },
