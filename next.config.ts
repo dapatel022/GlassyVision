@@ -2,6 +2,12 @@ import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
+  // Cloud Run runs a container: emit the self-contained server (server.js +
+  // minimal node_modules) that the Dockerfile's run stage copies.
+  output: "standalone",
+  // Without this, Next infers a workspace root above the project (stray parent
+  // lockfile) and nests standalone output under GLASS_APP/glass-app/.
+  outputFileTracingRoot: process.cwd(),
   images: {
     remotePatterns: [
       // Shopify CDN (product images from the Storefront API)
