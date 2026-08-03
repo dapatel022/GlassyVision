@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { createRateLimiter, clientIpFrom } from '@/lib/security/rate-limit';
+
+const limiter = createRateLimiter({ windowMs: 60_000, max: 5 });
 
 export async function POST(request: NextRequest) {
+  if (!limiter(clientIpFrom(request.headers))) {
+    return NextResponse.json({ error: 'Too many requests — please try again shortly' }, { status: 429 });
+  }
   const body = await request.json().catch(() => null) as { email?: string; dropSlug?: string; phone?: string } | null;
   const email = body?.email?.trim().toLowerCase();
   const dropSlug = body?.dropSlug?.trim();

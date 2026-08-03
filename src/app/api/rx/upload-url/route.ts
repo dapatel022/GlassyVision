@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { verifyRxToken } from '@/features/rx-intake/lib/rx-token';
+import { createRateLimiter, clientIpFrom } from '@/lib/security/rate-limit';
 
 const ALLOWED_TYPES = [
   'image/jpeg', 'image/png', 'image/heic', 'image/heif', 'application/pdf',
@@ -8,7 +9,13 @@ const ALLOWED_TYPES = [
 const MAX_SIZE_BYTES = 10 * 1024 * 1024;
 const SIGNED_URL_EXPIRY_SECONDS = 300;
 
+// Token-gated already; this bounds signed-URL minting abuse from one client.
+const limiter = createRateLimiter({ windowMs: 60_000, max: 20 });
+
 export async function POST(request: NextRequest) {
+  if (!limiter(clientIpFrom(request.headers))) {
+    return NextResponse.json({ error: 'Too many requests — please try again shortly' }, { status: 429 });
+  }
   const body = await request.json().catch(() => null) as {
     orderId?: string;
     lineItemId?: string;

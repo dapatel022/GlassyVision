@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { verifyRxToken } from '@/features/rx-intake/lib/rx-token';
+import { createRateLimiter, clientIpFrom } from '@/lib/security/rate-limit';
+
+const limiter = createRateLimiter({ windowMs: 60_000, max: 30 });
 
 export async function GET(request: NextRequest) {
+  if (!limiter(clientIpFrom(request.headers))) {
+    return NextResponse.json({ error: 'Too many requests — please try again shortly' }, { status: 429 });
+  }
   const orderId = request.nextUrl.searchParams.get('orderId');
   if (!orderId) {
     return NextResponse.json({ error: 'orderId required' }, { status: 400 });

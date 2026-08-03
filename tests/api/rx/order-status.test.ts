@@ -10,9 +10,14 @@ vi.mock('@/features/rx-intake/lib/rx-token', () => ({
   verifyRxToken: vi.fn(() => true),
 }));
 
+let reqSeq = 0;
 function req(query: string) {
   const nextUrl = new URL(`http://localhost/api/rx/order-status?${query}`);
-  return { nextUrl } as unknown as Parameters<typeof import('@/app/api/rx/order-status/route').GET>[0];
+  return {
+    nextUrl,
+    // Unique IP per call so the module-level rate limiter never interferes.
+    headers: new Headers({ 'x-forwarded-for': `198.51.100.${++reqSeq}` }),
+  } as unknown as Parameters<typeof import('@/app/api/rx/order-status/route').GET>[0];
 }
 
 beforeEach(() => {

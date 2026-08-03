@@ -29,7 +29,7 @@ function installClient(opts: ClaimOpts = {}) {
     }))
     .mockImplementation(() => ({ eq: () => Promise.resolve({ error: null }) }));
 
-  const shipmentInsert = vi.fn(() => ({
+  const shipmentInsert = vi.fn((_row?: Record<string, unknown>) => ({
     select: () => ({
       single: () => Promise.resolve(
         shipmentInsertError ? { data: null, error: { message: 'boom' } } : { data: { id: 's-1' }, error: null },

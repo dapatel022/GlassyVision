@@ -3,9 +3,16 @@ import { randomUUID } from 'crypto';
 import { createCart } from '@/lib/commerce/shopify';
 import { lensRequiresRx, selectedOptionIds } from '@/features/shop/lens-options';
 import { getLensUpgradePricing } from '@/lib/commerce/lens-pricing';
+import { createRateLimiter, clientIpFrom } from '@/lib/security/rate-limit';
 import type { CartLine } from '@/features/cart/types';
 
+// Each call creates a real Shopify cart — bound scripted abuse.
+const limiter = createRateLimiter({ windowMs: 60_000, max: 10 });
+
 export async function POST(request: NextRequest) {
+  if (!limiter(clientIpFrom(request.headers))) {
+    return NextResponse.json({ error: 'Too many requests — please try again shortly' }, { status: 429 });
+  }
   const body = await request.json().catch(() => null) as { lines?: CartLine[] } | null;
   const lines = body?.lines ?? [];
 

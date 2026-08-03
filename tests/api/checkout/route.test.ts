@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { CartLine } from '@/features/cart/types';
 
-const createCart = vi.fn(() => Promise.resolve({ id: 'cart-1', checkoutUrl: 'https://shop/checkout', lines: [] }));
+const createCart = vi.fn((..._a: unknown[]) => Promise.resolve({ id: 'cart-1', checkoutUrl: 'https://shop/checkout', lines: [] }));
 vi.mock('@/lib/commerce/shopify', () => ({
   createCart: (...a: unknown[]) => createCart(...a),
 }));
@@ -37,9 +37,13 @@ function frameLine(overrides: Partial<CartLine> = {}): CartLine {
   };
 }
 
+let reqSeq = 0;
 function req(lines: CartLine[]) {
   return {
     json: () => Promise.resolve({ lines }),
+    // Unique IP per call so the module-level rate limiter never interferes
+    // across tests (the route module is import-cached within this file).
+    headers: new Headers({ 'x-forwarded-for': `198.51.100.${++reqSeq}` }),
   } as unknown as Parameters<typeof import('@/app/checkout/route').POST>[0];
 }
 
