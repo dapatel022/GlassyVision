@@ -146,6 +146,7 @@ describe('getSiteNav', () => {
     expect(await getSiteNav()).toEqual(DEFAULT_NAV_LINKS);
     expect(DEFAULT_NAV_LINKS).toEqual([
       { href: '/shop', label: 'Shop' },
+      { href: '/membership', label: 'Membership' },
       { href: '/quiz', label: 'Frame Finder' },
       { href: '/drops', label: 'Drops' },
       { href: '/story', label: 'Story' },
