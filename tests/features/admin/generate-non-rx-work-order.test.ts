@@ -23,8 +23,9 @@ function installClient(opts: {
   addonForRef?: string | null;
   coatings?: string | null;
   tint?: string | null;
+  sku?: string;
 } = {}) {
-  const { isRxRequired = false, financialStatus = 'paid', country = 'US', existingWo = null, addonForRef = null, coatings = null, tint = null } = opts;
+  const { isRxRequired = false, financialStatus = 'paid', country = 'US', existingWo = null, addonForRef = null, coatings = null, tint = null, sku = 'GV-SUN-01' } = opts;
   const workOrderInsert = vi.fn((_row: Record<string, unknown>) => ({
     select: vi.fn(() => ({ single: vi.fn(() => Promise.resolve({ data: { id: 'wo-9', work_order_number: 'WO-202606-009' }, error: null })) })),
   }));
@@ -32,7 +33,7 @@ function installClient(opts: {
   mockFrom.mockImplementation((table: string) => {
     if (table === 'order_line_items') return {
       select: () => ({ eq: () => ({ single: () => Promise.resolve({ data: {
-        id: 'li-1', order_id: 'o-1', sku: 'GV-SUN-01', product_title: 'Sun', frame_shape: 'square', frame_color: 'black', frame_size: 'M', is_rx_required: isRxRequired,
+        id: 'li-1', order_id: 'o-1', sku, product_title: 'Sun', frame_shape: 'square', frame_color: 'black', frame_size: 'M', is_rx_required: isRxRequired,
         addon_for_ref: addonForRef, coatings, tint,
         orders: { financial_status: financialStatus, billing_country: country.toLowerCase(), shipping_address: { country_code: country } },
       }, error: null }) }) }),
@@ -112,6 +113,15 @@ describe('generateNonRxWorkOrder', () => {
     const result = await generateNonRxWorkOrder('li-1');
     expect(result.success).toBe(true);
     if (result.success) expect(result.workOrderId).toBe('wo-existing');
+    expect(workOrderInsert).not.toHaveBeenCalled();
+  });
+
+  it('refuses membership line items (virtual product, never a lab job)', async () => {
+    const { workOrderInsert } = installClient({ sku: 'SUB-2PAIR' });
+    const { generateNonRxWorkOrder } = await import('@/features/admin/actions/generate-non-rx-work-order');
+    const result = await generateNonRxWorkOrder('li-1');
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error).toBe('Membership purchases are not fulfillable items');
     expect(workOrderInsert).not.toHaveBeenCalled();
   });
 

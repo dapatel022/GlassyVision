@@ -39,7 +39,11 @@ export async function getNonRxQueueItems(supabase: SupabaseClient): Promise<NonR
     .eq('is_rx_required', false)
     // Lens-upgrade add-on lines are charge carriers paired to a frame line —
     // never fulfillable units, so they must not appear in this queue.
-    .is('addon_for_ref', null);
+    .is('addon_for_ref', null)
+    // Membership purchases (SUB-*) are virtual products with no physical
+    // fulfillment; Shopify never marks them shipped, so without this they sit
+    // in the queue forever and can be "released" as phantom lab jobs.
+    .not('sku', 'like', 'SUB-%');
 
   const rows = (candidates ?? []) as unknown as CandidateRow[];
 

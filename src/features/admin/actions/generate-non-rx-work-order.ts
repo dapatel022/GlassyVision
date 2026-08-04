@@ -43,6 +43,12 @@ export async function generateNonRxWorkOrder(lineItemId: string): Promise<Genera
   if (li.addon_for_ref) {
     return { success: false, error: 'Add-on line items are not fulfillable' };
   }
+  // Membership purchases are virtual: provisioning (not the lab) fulfills them.
+  // Defense in depth behind the queue filter — this action is independently
+  // invokable, and a phantom SUB- work order would reach a real lab kanban.
+  if ((li.sku ?? '').startsWith('SUB-')) {
+    return { success: false, error: 'Membership purchases are not fulfillable items' };
+  }
 
   const order = (li as unknown as {
     orders: { financial_status: string | null; billing_country: string | null; shipping_address: unknown } | null;

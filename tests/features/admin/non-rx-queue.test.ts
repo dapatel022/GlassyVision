@@ -4,16 +4,19 @@ const mockFrom = vi.fn();
 function makeClient() { return { from: mockFrom }; }
 
 const isFilter = vi.fn();
+const notFilter = vi.fn();
 
-/** The queue query is .select().eq('is_rx_required', false).is('addon_for_ref', null). */
+/** Queue query: .select().eq('is_rx_required', false).is('addon_for_ref', null).not('sku','like','SUB-%'). */
 function lineItemsTable(rows: unknown[]) {
-  isFilter.mockImplementation(() => Promise.resolve({ data: rows, error: null }));
+  notFilter.mockImplementation(() => Promise.resolve({ data: rows, error: null }));
+  isFilter.mockImplementation(() => ({ not: notFilter }));
   return { select: () => ({ eq: () => ({ is: isFilter }) }) };
 }
 
 beforeEach(() => {
   mockFrom.mockReset();
   isFilter.mockReset();
+  notFilter.mockReset();
 });
 
 describe('getNonRxQueueItems', () => {
@@ -45,6 +48,10 @@ describe('getNonRxQueueItems', () => {
     // Lens-upgrade add-on lines are charge carriers, not fulfillable units —
     // they must be excluded in the query itself.
     expect(isFilter).toHaveBeenCalledWith('addon_for_ref', null);
+    // Membership purchases (SUB-*) are virtual products — never fulfillable
+    // frames; without this a paid membership sits in the queue forever and an
+    // admin can release a phantom job to the lab (2026-08-04 review finding).
+    expect(notFilter).toHaveBeenCalledWith('sku', 'like', 'SUB-%');
   });
 
   it('returns an empty list when no non-Rx line items are waiting', async () => {
