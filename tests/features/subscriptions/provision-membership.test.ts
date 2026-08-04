@@ -176,4 +176,54 @@ describe('provisionMembershipFromOrder', () => {
     const res = await provisionMembershipFromOrder({ id: 'o1', shopify_order_id: 555, customer_id: 'c1', customer_email: 'a@b.com', currency: 'usd', financial_status: 'paid' } as never, supabase as never);
     expect(res.provisioned).toBe(true);
   });
+
+  it('provisions pairs_total from the MATCHED tier (Duo → 2 slots), not a hardcoded count', async () => {
+    const duoPlan = { ...activePlan, id: 'plan-duo', shopify_variant_id: 333, pairs_count: 2 };
+    const membershipInsert = vi.fn(() => ({ select: () => ({ maybeSingle: () => Promise.resolve({ data: { id: 'mem-duo' }, error: null }) }) }));
+    const slotInsert = vi.fn(() => Promise.resolve({ error: null }));
+    from.mockImplementation((t: string) => {
+      if (t === 'order_line_items') return { select: () => ({ eq: () => Promise.resolve({ data: [{ variant_id: 333, product_id: 111, sku: 'SUB-2PAIR' }], error: null }) }) };
+      if (t === 'subscription_plans') return { select: () => ({ eq: () => Promise.resolve({ data: [activePlan, duoPlan], error: null }) }) };
+      if (t === 'subscription_memberships') return { insert: membershipInsert };
+      if (t === 'subscription_redemptions') return { insert: slotInsert };
+      return table({});
+    });
+    const { provisionMembershipFromOrder } = await import('@/features/subscriptions/provision-membership');
+    const res = await provisionMembershipFromOrder({ id: 'o-duo', shopify_order_id: 557, customer_id: 'c3', customer_email: 'd@e.com', currency: 'usd', financial_status: 'paid' } as never, supabase as never);
+    expect(res.provisioned).toBe(true);
+    expect(membershipInsert).toHaveBeenCalledWith(expect.objectContaining({ pairs_total: 2, plan_id: 'plan-duo' }));
+    const slotCalls = slotInsert.mock.calls as unknown as unknown[][];
+    expect(slotCalls[0][0]).toHaveLength(2);
+  });
+
+  it('audit-logs loudly when a SUB- SKU is purchased but no plan row matches', async () => {
+    const auditInsert = vi.fn(() => Promise.resolve({ error: null }));
+    from.mockImplementation((t: string) => {
+      if (t === 'order_line_items') return { select: () => ({ eq: () => Promise.resolve({ data: [{ variant_id: 999, product_id: 999, sku: 'SUB-2PAIR' }], error: null }) }) };
+      if (t === 'subscription_plans') return { select: () => ({ eq: () => Promise.resolve({ data: [activePlan], error: null }) }) };
+      if (t === 'audit_log') return { insert: auditInsert };
+      return table({});
+    });
+    const { provisionMembershipFromOrder } = await import('@/features/subscriptions/provision-membership');
+    const res = await provisionMembershipFromOrder({ id: 'o-bad', shopify_order_id: 558, customer_id: 'c4', financial_status: 'paid' } as never, supabase as never);
+    expect(res.provisioned).toBe(false);
+    expect(auditInsert).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'membership_provision_failed',
+      entity_id: 'o-bad',
+    }));
+  });
+
+  it('stays silent for non-membership orders with no plan match (no audit noise)', async () => {
+    const auditInsert = vi.fn(() => Promise.resolve({ error: null }));
+    from.mockImplementation((t: string) => {
+      if (t === 'order_line_items') return { select: () => ({ eq: () => Promise.resolve({ data: [{ variant_id: 999, product_id: 999, sku: 'GV-AVIATOR' }], error: null }) }) };
+      if (t === 'subscription_plans') return { select: () => ({ eq: () => Promise.resolve({ data: [activePlan], error: null }) }) };
+      if (t === 'audit_log') return { insert: auditInsert };
+      return table({});
+    });
+    const { provisionMembershipFromOrder } = await import('@/features/subscriptions/provision-membership');
+    const res = await provisionMembershipFromOrder({ id: 'o-frame', shopify_order_id: 559, customer_id: 'c5', financial_status: 'paid' } as never, supabase as never);
+    expect(res.provisioned).toBe(false);
+    expect(auditInsert).not.toHaveBeenCalled();
+  });
 });

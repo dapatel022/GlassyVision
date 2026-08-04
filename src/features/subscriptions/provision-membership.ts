@@ -42,19 +42,39 @@ export async function provisionMembershipFromOrder(
 
   const { data: lineItems } = await supabase
     .from('order_line_items')
-    .select('variant_id, product_id')
+    .select('variant_id, product_id, sku')
     .eq('order_id', order.id);
   const { data: plans } = await supabase
     .from('subscription_plans')
     .select('*')
     .eq('status', 'active');
 
-  const plan = (plans ?? []).find((p) =>
-    (lineItems ?? []).some((li) =>
-      (p.shopify_variant_id && li.variant_id === p.shopify_variant_id) ||
-      (p.shopify_product_id && li.product_id === p.shopify_product_id)),
-  );
-  if (!plan) return { provisioned: false };
+  // All tiers share ONE Shopify product, so a product-id match is ambiguous —
+  // it would always resolve to the first plan row regardless of the tier
+  // bought. Variant id is the tier identity; product id is only a fallback for
+  // legacy single-plan setups with no variant id recorded.
+  const plan =
+    (plans ?? []).find((p) =>
+      p.shopify_variant_id && (lineItems ?? []).some((li) => li.variant_id === p.shopify_variant_id),
+    ) ??
+    (plans ?? []).find((p) =>
+      !p.shopify_variant_id && p.shopify_product_id && (lineItems ?? []).some((li) => li.product_id === p.shopify_product_id),
+    );
+  if (!plan) {
+    // A membership SKU with no matching plan row means checkout sold a tier
+    // provisioning cannot fulfill — that must be loud, not a silent skip.
+    const subSkus = (lineItems ?? []).map((li) => li.sku).filter((s): s is string => !!s && s.startsWith('SUB-'));
+    if (subSkus.length > 0) {
+      await supabase.from('audit_log').insert({
+        user_id: null,
+        action: 'membership_provision_failed',
+        entity_type: 'orders',
+        entity_id: order.id,
+        after_data: { skus: subSkus, reason: 'no active subscription_plans row matches the purchased variant' } as never,
+      });
+    }
+    return { provisioned: false };
+  }
 
   const termEnd = new Date();
   termEnd.setMonth(termEnd.getMonth() + plan.term_months);
