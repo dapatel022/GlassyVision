@@ -2,7 +2,18 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getCurrentCustomer } from '@/lib/auth/customer';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { deriveSlotState, type SlotState } from '@/features/subscriptions/lib/slot-state';
 import type { Database } from '@/lib/supabase/types';
+
+// Slot chip treatment per visual state (tech-minimal: mono chips, one accent).
+const STATE_CHIP: Record<SlotState, { label: string; className: string }> = {
+  available: { label: 'AVAILABLE', className: 'bg-accent text-white' },
+  awaiting_rx: { label: 'AWAITING RX', className: 'bg-amber-100 text-amber-900 border border-amber-300' },
+  in_production: { label: 'IN PRODUCTION', className: 'bg-base-deeper text-ink border border-line' },
+  shipped: { label: 'SHIPPED', className: 'bg-success text-white' },
+  reserved: { label: 'RESERVED', className: 'bg-base-deeper text-muted border border-line' },
+  expired: { label: 'EXPIRED', className: 'bg-base-deeper text-muted-soft border border-line' },
+};
 
 export const metadata = { title: 'Subscription' };
 export const dynamic = 'force-dynamic';
@@ -64,9 +75,10 @@ export default async function SubscriptionDashboardPage() {
             <p className="text-sm text-muted mt-1">{customer.email}</p>
           </header>
           <section className="border border-dashed border-line bg-white p-12 text-center">
-            <p className="font-serif italic text-muted">You don&apos;t have an active subscription.</p>
-            <Link href="/shop" className="inline-block mt-4 text-accent underline">
-              Browse subscriptions →
+            <p className="font-serif italic text-muted">You don&apos;t have an active membership.</p>
+            <p className="text-sm text-muted mt-2">1, 2, or 3 pairs a year — from $63 a pair.</p>
+            <Link href="/membership" className="inline-block mt-4 text-accent underline">
+              See membership tiers →
             </Link>
           </section>
           <Link href="/account" className="inline-block text-xs font-mono text-muted underline">
@@ -112,40 +124,43 @@ export default async function SubscriptionDashboardPage() {
           </div>
         </section>
 
-        <section className="space-y-4">
-          <h2 className="font-sans text-sm font-bold uppercase tracking-widest text-ink">Your pairs</h2>
-          {redemptions.map((r) => {
-            const isAvailable = r.status === 'available' && isUnlocked(r.unlocks_at);
-            return (
-              <div key={r.id} className="border border-line bg-white p-5 flex items-center justify-between">
-                <div>
-                  <p className="font-sans font-bold text-sm uppercase tracking-wider text-ink">
-                    Pair {r.slot_index + 1}
-                  </p>
-                  <p className="text-sm text-muted mt-1">
-                    {STATUS_LABEL[r.status] ?? r.status}
-                  </p>
-                  {r.status === 'shipped' && (
-                    <p className="text-xs font-mono text-muted-soft mt-1">
-                      On its way — tracking details are in your shipping email.
+        <section>
+          <h2 className="font-sans text-sm font-bold uppercase tracking-widest text-ink mb-4">Your pairs</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-px bg-line border border-line">
+            {redemptions.map((r) => {
+              const state = deriveSlotState(r, membership.status);
+              const chip = STATE_CHIP[state];
+              const redeemable = state === 'available' && isUnlocked(r.unlocks_at);
+              return (
+                <div key={r.id} className="bg-white p-5 flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <p className="font-mono text-xs font-bold tracking-widest text-muted-soft">
+                      SLOT {String(r.slot_index + 1).padStart(2, '0')}
                     </p>
-                  )}
+                    <span className={`font-mono text-[10px] font-bold tracking-widest px-2 py-1 ${chip.className}`}>
+                      {chip.label}
+                    </span>
+                  </div>
+                  <p className="text-sm text-muted flex-1">
+                    {STATUS_LABEL[r.status] ?? r.status}
+                    {state === 'shipped' && ' — tracking details are in your shipping email.'}
+                  </p>
+                  {redeemable ? (
+                    <Link
+                      href={`/account/subscription/redeem/${r.id}`}
+                      className="block text-center px-4 py-2.5 bg-ink text-white font-sans font-bold text-xs tracking-widest uppercase hover:bg-accent transition-colors"
+                    >
+                      Redeem this pair
+                    </Link>
+                  ) : state === 'available' ? (
+                    <span className="text-xs font-mono text-muted-soft uppercase">
+                      Unlocks {new Date(r.unlocks_at).toLocaleDateString()}
+                    </span>
+                  ) : null}
                 </div>
-                {isAvailable ? (
-                  <Link
-                    href={`/account/subscription/redeem/${r.id}`}
-                    className="px-4 py-2 bg-ink text-base font-sans font-bold text-xs tracking-widest uppercase"
-                  >
-                    Use a pair
-                  </Link>
-                ) : r.status === 'available' ? (
-                  <span className="text-xs font-mono text-muted-soft uppercase">
-                    Unlocks {new Date(r.unlocks_at).toLocaleDateString()}
-                  </span>
-                ) : null}
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </section>
       </div>
     </main>
