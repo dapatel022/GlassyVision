@@ -9,6 +9,7 @@ export interface NavLink {
 /** Today's hardcoded header links — the guaranteed fallback. */
 export const DEFAULT_NAV_LINKS: NavLink[] = [
   { href: '/shop', label: 'Shop' },
+  { href: '/membership', label: 'Membership' },
   { href: '/quiz', label: 'Frame Finder' },
   { href: '/drops', label: 'Drops' },
   { href: '/story', label: 'Story' },
