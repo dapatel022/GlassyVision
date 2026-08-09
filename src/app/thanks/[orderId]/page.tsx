@@ -2,6 +2,7 @@ import Link from 'next/link';
 import ClearCartOnMount from '@/features/cart/ClearCartOnMount';
 import { getBanners } from '@/lib/commerce/content';
 import PromoBanner from '@/components/site/PromoBanner';
+import ThanksMembershipPitch from '@/features/subscriptions/components/ThanksMembershipPitch';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,6 +60,8 @@ export default async function ThanksPage({ params }: PageProps) {
             Create your account
           </Link>
         </div>
+
+        <ThanksMembershipPitch />
       </div>
     </div>
   );
