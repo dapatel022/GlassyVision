@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useCart } from '@/context/CartContext';
 import CartLineItem from '@/features/cart/CartLineItem';
+import CartMembershipNudge from '@/features/cart/CartMembershipNudge';
 import type { SiteBanner } from '@/lib/commerce/content';
 import type { LensPricingMap } from '@/lib/commerce/lens-pricing';
 import { selectedOptionIds } from '@/features/shop/lens-options';
@@ -101,9 +102,12 @@ export default function CartClient({ banner }: { banner: SiteBanner | null }) {
         </div>
       )}
 
-      <div className="flex items-center justify-between mb-6 pt-4 border-t border-line">
-        <span className="text-sm font-sans font-bold uppercase tracking-wider text-muted">Subtotal</span>
-        <span className="font-mono text-xl text-ink">${(subtotal + upgradesTotal).toFixed(0)}</span>
+      <div className="space-y-6 mb-6">
+        <CartMembershipNudge lines={lines} />
+        <div className="flex items-center justify-between pt-4 border-t border-line">
+          <span className="text-sm font-sans font-bold uppercase tracking-wider text-muted">Subtotal</span>
+          <span className="font-mono text-xl text-ink">${(subtotal + upgradesTotal).toFixed(0)}</span>
+        </div>
       </div>
       <p className="text-xs text-muted-soft mb-6">
         Shipping and taxes calculated at checkout.
