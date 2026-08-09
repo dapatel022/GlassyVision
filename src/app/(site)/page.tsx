@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import Image from 'next/image';
 import { getProducts } from '@/lib/commerce/shopify';
 import { getHomepageContent } from '@/lib/commerce/content';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -49,6 +50,69 @@ export default async function HomePage() {
       {/* Editorial Hero Showcase */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 pt-12 md:pt-20">
         <HeroShowcase slides={content.slides ?? undefined} badgeText={content.badgeText ?? undefined} />
+      </section>
+
+      {/* Brand Campaign Visual Grid */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="relative aspect-[16/10] rounded-3xl overflow-hidden border border-line shadow-md group">
+            <Image
+              src="/images/campaign_honey_tortoise.jpg"
+              alt="GlassyVision Honey Tortoise Luxury Sunglass Campaign"
+              fill
+              sizes="(max-width: 768px) 100vw, 50vw"
+              className="object-cover group-hover:scale-105 transition-transform duration-700"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent flex flex-col justify-end p-8 text-white space-y-2">
+              <span className="font-mono text-[9px] font-bold uppercase tracking-[3px] text-accent-light">
+                Cellulose Acetate Series
+              </span>
+              <h2 className="font-sans text-2xl font-black uppercase tracking-tight">
+                Honey Tortoise Archetype
+              </h2>
+              <p className="font-serif italic text-xs text-gray-300 max-w-sm">
+                Sculpted from organic wood-pulp cotton plates, tumbled for 72 hours in birchwood chips for a mirror finish.
+              </p>
+              <div className="pt-2">
+                <Link
+                  href="/p/gv-01-archetype"
+                  className="inline-flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-wider text-white hover:text-accent-light transition-colors"
+                >
+                  View Frame Specs &rarr;
+                </Link>
+              </div>
+            </div>
+          </div>
+
+          <div className="relative aspect-[16/10] rounded-3xl overflow-hidden border border-line shadow-md group">
+            <Image
+              src="/images/campaign_gold_aviator.jpg"
+              alt="GlassyVision 18k Gold Plated Double Bridge Aviator Campaign"
+              fill
+              sizes="(max-width: 768px) 100vw, 50vw"
+              className="object-cover group-hover:scale-105 transition-transform duration-700"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent flex flex-col justify-end p-8 text-white space-y-2">
+              <span className="font-mono text-[9px] font-bold uppercase tracking-[3px] text-amber-300">
+                18k Gold Plated Edition
+              </span>
+              <h2 className="font-sans text-2xl font-black uppercase tracking-tight">
+                GV-03 Voyager Sun
+              </h2>
+              <p className="font-serif italic text-xs text-gray-300 max-w-sm">
+                Double-bridge tear-drop aviator frames with polarized dark forest green lens optics.
+              </p>
+              <div className="pt-2">
+                <Link
+                  href="/p/gv-03-voyager"
+                  className="inline-flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-wider text-white hover:text-amber-300 transition-colors"
+                >
+                  View Sunglasses &rarr;
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
 
       {/* Infinite Scrolling Ticker */}

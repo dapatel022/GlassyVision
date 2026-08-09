@@ -1,4 +1,4 @@
-# GlassyVision — Full QA Test Scenarios (2026-05-31)
+what ar# GlassyVision — Full QA Test Scenarios (2026-05-31)
 
 Manual + exploratory test matrix covering every persona and edge. Pairs with the
 151 automated unit tests (which cover the server-side gates, webhook idempotency,

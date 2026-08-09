@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import Image from 'next/image';
 
 export const metadata = {
   title: 'Made in India — The Craftsmanship Journal',
@@ -52,6 +53,23 @@ export default function MadeInIndiaPage() {
           GlassyVision frames are designed in Syracuse and hand-finished in a small boutique workshop in India. We skip mass factories to focus on manual detail.
         </p>
       </header>
+
+      {/* Crafted Workshop Banner */}
+      <div className="relative aspect-[16/9] w-full rounded-2xl overflow-hidden border border-line shadow-md">
+        <Image
+          src="/images/craftsmanship_banner.jpg"
+          alt="Master optical artisan hand polishing acetate eyeglass frame on workbench"
+          fill
+          priority
+          sizes="(max-width: 896px) 100vw, 896px"
+          className="object-cover"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent flex items-end p-6 md:p-8">
+          <p className="text-white font-mono text-xs font-bold uppercase tracking-widest">
+            Boutique Optical Lab Workshop · Hand-buffed in small batches
+          </p>
+        </div>
+      </div>
 
       {/* Hero Workshop Quote */}
       <div className="bg-ink text-white p-8 rounded-2xl border border-line flex flex-col md:flex-row items-center gap-8">
