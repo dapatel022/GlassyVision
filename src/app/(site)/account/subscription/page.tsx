@@ -71,7 +71,8 @@ export default async function SubscriptionDashboardPage() {
       <main className="min-h-screen bg-base px-6 py-16">
         <div className="max-w-2xl mx-auto space-y-8">
           <header>
-            <h1 className="font-sans text-2xl font-black uppercase text-ink">Subscription</h1>
+            <p className="font-mono text-[10px] font-bold uppercase tracking-[3px] text-accent">Your membership</p>
+            <h1 className="font-sans text-2xl font-black uppercase text-ink mt-1">Subscription</h1>
             <p className="text-sm text-muted mt-1">{customer.email}</p>
           </header>
           <section className="border border-dashed border-line bg-white p-12 text-center">
@@ -103,7 +104,8 @@ export default async function SubscriptionDashboardPage() {
       <div className="max-w-2xl mx-auto space-y-8">
         <header className="flex items-baseline justify-between">
           <div>
-            <h1 className="font-sans text-2xl font-black uppercase text-ink">Subscription</h1>
+            <p className="font-mono text-[10px] font-bold uppercase tracking-[3px] text-accent">Your membership</p>
+            <h1 className="font-sans text-2xl font-black uppercase text-ink mt-1">Subscription</h1>
             <p className="text-sm text-muted mt-1">{customer.email}</p>
           </div>
           <Link href="/account" className="text-xs font-mono text-muted underline">
@@ -125,14 +127,14 @@ export default async function SubscriptionDashboardPage() {
         </section>
 
         <section>
-          <h2 className="font-sans text-sm font-bold uppercase tracking-widest text-ink mb-4">Your pairs</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-px bg-line border border-line">
+          <h2 className="font-sans text-sm font-bold uppercase tracking-widest text-ink border-b border-line pb-2 mb-4">Your pairs</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {redemptions.map((r) => {
               const state = deriveSlotState(r, membership.status);
               const chip = STATE_CHIP[state];
               const redeemable = state === 'available' && isUnlocked(r.unlocks_at);
               return (
-                <div key={r.id} className="bg-white p-5 flex flex-col gap-3">
+                <div key={r.id} className="bg-white border border-line rounded-2xl p-5 shadow-sm flex flex-col gap-3">
                   <div className="flex items-center justify-between">
                     <p className="font-mono text-xs font-bold tracking-widest text-muted-soft">
                       SLOT {String(r.slot_index + 1).padStart(2, '0')}
