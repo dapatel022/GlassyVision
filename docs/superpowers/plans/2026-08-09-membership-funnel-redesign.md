@@ -1012,7 +1012,9 @@ git add src/features/subscriptions/components/Membership{Hero,SavingsCalculator,
 git commit -m "feat(membership): editorial page sections (hero, live savings calc, comparison, upgrades)"
 ```
 
----### Task 6: `/membership` page rewrite
+---
+
+### Task 6: `/membership` page rewrite
 
 **Files:**
 - Modify: `src/app/(site)/membership/page.tsx` (full rewrite of the JSX; keep the `hasActiveMembership` block and `revalidate` exactly as-is)
