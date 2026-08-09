@@ -63,7 +63,7 @@ Kept from current page: active-membership banner (members see "manage your pairs
 | PDP | `src/app/(site)/p/[handle]/page.tsx` | `MembershipMathLine` (server) | Under the price: "Or from $63/pair with membership →" via `pdpMathLine`. Hidden on `membership` / `lens-upgrades` PDPs and when helper returns null. |
 | Homepage | `src/app/(site)/page.tsx` | `MembershipBand` (server) | Editorial band: campaign photography + savings hook ("Frames from $63/pair") + CTA to `/membership`. |
 | Cart | `src/features/cart/CartClient.tsx` | `CartMembershipNudge` (client) | Fetches `/api/membership-math`. Counts frame lines (excludes membership + `LENSUP-*` lines); `matchTierForCart` hit → "Your cart is $437 — Trio covers 3 pairs for $189/yr →". Fetch fails / null → nothing. |
-| /thanks | `src/app/thanks/[orderId]/page.tsx` | `ThanksMembershipPitch` (server) | Non-membership orders only: "Your next pair could be from $63/pair." Membership orders → nothing. |
+| /thanks | `src/app/thanks/[orderId]/page.tsx` | `ThanksMembershipPitch` (server) | Order-blind (audit C3 — no order lookup); suppressed for signed-in active members; copy reads fine post-membership-purchase. "Your next pair could be from $63/pair." |
 
 ## 4. Account dashboard polish — `src/app/(site)/account/subscription/page.tsx`
 
