@@ -9,6 +9,7 @@ import PromoBanner from '@/components/site/PromoBanner';
 import FitDimensionBar from '@/features/shop/components/FitDimensionBar';
 import UnboxingTrustModule from '@/features/shop/components/UnboxingTrustModule';
 import BatchScarcityBadge from '@/features/shop/components/BatchScarcityBadge';
+import MembershipMathLine from '@/features/subscriptions/components/MembershipMathLine';
 
 export const revalidate = 300;
 
@@ -93,6 +94,7 @@ export default async function ProductDetailPage({ params }: PageProps) {
                 frame + standard lenses
               </span>
             </div>
+            <MembershipMathLine productHandle={handle} productPrice={Number(product.price)} />
           </div>
 
           {product.description && (
