@@ -102,7 +102,7 @@ export default async function SubscriptionDashboardPage() {
   return (
     <main className="min-h-screen bg-base px-6 py-16">
       <div className="max-w-2xl mx-auto space-y-8">
-        <header className="flex items-baseline justify-between">
+        <header className="flex items-start justify-between">
           <div>
             <p className="font-mono text-[10px] font-bold uppercase tracking-[3px] text-accent">Your membership</p>
             <h1 className="font-sans text-2xl font-black uppercase text-ink mt-1">Subscription</h1>
