@@ -7,6 +7,7 @@ import ProductCard from '@/features/shop/ProductCard';
 import WaitlistForm from '@/features/shop/WaitlistForm';
 import HeroShowcase from '@/features/shop/HeroShowcase';
 import DropCountdown from '@/features/shop/DropCountdown';
+import MembershipBand from '@/features/subscriptions/components/MembershipBand';
 
 export const revalidate = 900;
 
@@ -130,6 +131,9 @@ export default async function HomePage() {
           ))}
         </div>
       </div>
+
+      {/* Membership Editorial Band */}
+      <MembershipBand />
 
       {/* Drop Status & Urgency Metrics Panel */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6">
