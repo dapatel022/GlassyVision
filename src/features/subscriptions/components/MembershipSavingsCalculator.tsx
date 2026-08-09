@@ -40,7 +40,7 @@ export default function MembershipSavingsCalculator({ math }: { math: Membership
             <span className="text-xl align-top text-muted-soft font-mono">/PAIR</span>
           </p>
           <p className="font-mono text-xs text-muted mt-2">
-            {TIER_LABELS[tier.tier]} — ${tier.yearly} {tier.currencyCode} once a year, {tier.pairs}{' '}
+            {TIER_LABELS[tier.tier]} — ${tier.yearly.toFixed(0)} {tier.currencyCode} once a year, {tier.pairs}{' '}
             {tier.pairs === 1 ? 'pair' : 'pairs'}
           </p>
         </div>

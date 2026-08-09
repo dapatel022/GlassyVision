@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getCurrentCustomer } from '@/lib/auth/customer';
+import { getMembershipMath } from '@/lib/commerce/membership-math';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { deriveSlotState, type SlotState } from '@/features/subscriptions/lib/slot-state';
 import type { Database } from '@/lib/supabase/types';
@@ -67,6 +68,7 @@ export default async function SubscriptionDashboardPage() {
     .maybeSingle();
 
   if (!membership) {
+    const math = await getMembershipMath();
     return (
       <main className="min-h-screen bg-base px-6 py-16">
         <div className="max-w-2xl mx-auto space-y-8">
@@ -77,7 +79,7 @@ export default async function SubscriptionDashboardPage() {
           </header>
           <section className="border border-dashed border-line bg-white p-12 text-center">
             <p className="font-serif italic text-muted">You don&apos;t have an active membership.</p>
-            <p className="text-sm text-muted mt-2">1, 2, or 3 pairs a year — from $63 a pair.</p>
+            <p className="text-sm text-muted mt-2">1, 2, or 3 pairs a year{math ? ` — from $${math.bestPerPair} a pair` : ''}.</p>
             <Link href="/membership" className="inline-block mt-4 text-accent underline">
               See membership tiers →
             </Link>

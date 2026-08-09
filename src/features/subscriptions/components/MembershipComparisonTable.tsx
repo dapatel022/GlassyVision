@@ -23,7 +23,7 @@ export default function MembershipComparisonTable({ columns }: { columns: Compar
     },
     {
       title: 'GlassyVision Trio',
-      cost: `$${columns.membershipYear}`,
+      cost: `$${columns.membershipYear.toFixed(0)}`,
       lines: ['3 pairs included', 'Any frame, Rx or plano', 'No auto-renew, prorated refunds'],
       accent: true,
     },

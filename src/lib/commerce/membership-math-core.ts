@@ -82,7 +82,7 @@ export function matchTierForCart(
   frameCount: number,
   frameSubtotal: number,
 ): TierMath | null {
-  if (!math || frameCount < 1 || frameCount > 3) return null;
+  if (!math || frameCount < 1 || frameCount > 3 || !Number.isFinite(frameSubtotal)) return null;
   const tier = math.tiers.find((t) => t.pairs === frameCount);
   if (!tier || frameSubtotal <= tier.yearly) return null;
   return tier;

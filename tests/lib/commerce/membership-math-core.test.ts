@@ -77,6 +77,9 @@ describe('matchTierForCart', () => {
   it('is null when math is unavailable', () => {
     expect(matchTierForCart(null, 3, 999)).toBeNull();
   });
+  it('is null when frameSubtotal is not finite (fail closed, not fail open)', () => {
+    expect(matchTierForCart(math, 3, NaN)).toBeNull();
+  });
 });
 
 describe('cartFrameSummary', () => {

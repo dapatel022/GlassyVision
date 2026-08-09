@@ -35,9 +35,9 @@ export default function CartMembershipNudge({ lines }: { lines: CartLine[] }) {
   return (
     <div className="p-4 border border-accent/40 bg-accent/5 rounded-xl">
       <p className="text-sm text-ink">
-        <strong className="font-bold">Your {frameCount === 1 ? 'frame is' : `${frameCount} frames are`} ${frameSubtotal}.</strong>{' '}
+        <strong className="font-bold">Your {frameCount === 1 ? 'frame is' : `${frameCount} frames are`} ${frameSubtotal.toFixed(0)}.</strong>{' '}
         The {TIER_LABELS[tier.tier]} membership covers {tier.pairs}{' '}
-        {tier.pairs === 1 ? 'pair' : 'pairs'} for ${tier.yearly}/yr.
+        {tier.pairs === 1 ? 'pair' : 'pairs'} for ${tier.yearly.toFixed(0)}/yr.
       </p>
       <Link href="/membership" className="text-sm text-accent underline underline-offset-2">
         See if membership beats this cart →
