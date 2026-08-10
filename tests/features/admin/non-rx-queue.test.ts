@@ -4,19 +4,26 @@ const mockFrom = vi.fn();
 function makeClient() { return { from: mockFrom }; }
 
 const isFilter = vi.fn();
-const notFilter = vi.fn();
+const notFilterSub = vi.fn();
+const notFilterSurch = vi.fn();
 
-/** Queue query: .select().eq('is_rx_required', false).is('addon_for_ref', null).not('sku','like','SUB-%'). */
+/**
+ * Queue query:
+ * .select().eq('is_rx_required', false).is('addon_for_ref', null)
+ *   .not('sku','like','SUB-%').not('sku','like','SURCH-%').
+ */
 function lineItemsTable(rows: unknown[]) {
-  notFilter.mockImplementation(() => Promise.resolve({ data: rows, error: null }));
-  isFilter.mockImplementation(() => ({ not: notFilter }));
+  notFilterSurch.mockImplementation(() => Promise.resolve({ data: rows, error: null }));
+  notFilterSub.mockImplementation(() => ({ not: notFilterSurch }));
+  isFilter.mockImplementation(() => ({ not: notFilterSub }));
   return { select: () => ({ eq: () => ({ is: isFilter }) }) };
 }
 
 beforeEach(() => {
   mockFrom.mockReset();
   isFilter.mockReset();
-  notFilter.mockReset();
+  notFilterSub.mockReset();
+  notFilterSurch.mockReset();
 });
 
 describe('getNonRxQueueItems', () => {
@@ -51,7 +58,10 @@ describe('getNonRxQueueItems', () => {
     // Membership purchases (SUB-*) are virtual products — never fulfillable
     // frames; without this a paid membership sits in the queue forever and an
     // admin can release a phantom job to the lab (2026-08-04 review finding).
-    expect(notFilter).toHaveBeenCalledWith('sku', 'like', 'SUB-%');
+    expect(notFilterSub).toHaveBeenCalledWith('sku', 'like', 'SUB-%');
+    // Premium-frame surcharge lines (SURCH-*) are charge carriers, not
+    // fulfillable units — same rationale as SUB-* (plan-builder Task 4).
+    expect(notFilterSurch).toHaveBeenCalledWith('sku', 'like', 'SURCH-%');
   });
 
   it('returns an empty list when no non-Rx line items are waiting', async () => {

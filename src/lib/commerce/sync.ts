@@ -3,6 +3,7 @@ import type { Database, Json } from '../supabase/types';
 import { generateRxToken } from '@/features/rx-intake/lib/rx-token';
 import { renderRxReminder } from '../email/templates/rx-reminder';
 import { sendEmail } from '../email/resend';
+import { parsePairProperty, type PairConfig } from '@/features/subscriptions/lib/pair-config';
 
 type OrderFinancialStatus = Database['public']['Enums']['order_financial_status'];
 type OrderFulfillmentStatus = Database['public']['Enums']['order_fulfillment_status'];
@@ -208,6 +209,9 @@ export async function syncShopifyOrder(
       let lensTypeRaw: string | null = null;
       let coatingsRaw: string | null = null;
       let tintRaw: string | null = null;
+      // Purchase-time pair configs (_pair_N) for membership (SUB-*) lines.
+      // Declared inside the line-item loop so configs never leak between lines.
+      const pairProps: Array<{ index: number; config: PairConfig }> = [];
 
       // Scan properties array. Normalize the property NAME (strip case and any
       // non-alphanumerics) so 'lens_type', 'lensType', '_lensType' and 'lenstype'
@@ -237,6 +241,9 @@ export async function syncShopifyOrder(
           if (name === 'framecolor') frameColor = prop.value;
           if (name === 'framesize') frameSize = prop.value;
           if (name === 'redemptionid') redemptionId = prop.value;
+
+          const pairParsed = parsePairProperty(String(prop.name), String(prop.value));
+          if (pairParsed) pairProps.push(pairParsed);
         }
       }
 
@@ -249,12 +256,14 @@ export async function syncShopifyOrder(
         }
       }
 
-      // Lens-upgrade add-on lines (paired to a frame line at checkout) are
-      // charge carriers only: they never enter the Rx pipeline, the non-Rx
-      // fulfillment queue, or work-order generation. Detect by the checkout-
-      // minted _addon_for property, or by SKU prefix for manually created
-      // Shopify orders.
-      const isAddon = addonForRef !== null || (item.sku ?? '').startsWith('LENSUP-');
+      // Lens-upgrade and premium-frame-surcharge add-on lines (paired to a
+      // frame/membership line at checkout) are charge carriers only: they
+      // never enter the Rx pipeline, the non-Rx fulfillment queue, or
+      // work-order generation. Detect by the checkout-minted _addon_for
+      // property, or by SKU prefix for manually created Shopify orders.
+      const isAddon = addonForRef !== null
+        || (item.sku ?? '').startsWith('LENSUP-')
+        || (item.sku ?? '').startsWith('SURCH-');
       if (isAddon) {
         addonForRef = addonForRef ?? 'sku';
         isRxRequired = false;
@@ -283,6 +292,9 @@ export async function syncShopifyOrder(
         lens_type: isAddon ? null : lensTypeRaw,
         coatings: isAddon ? null : coatingsRaw,
         tint: isAddon ? null : tintRaw,
+        pair_configs: (item.sku ?? '').startsWith('SUB-') && pairProps.length > 0
+          ? (pairProps.sort((a, b) => a.index - b.index).map((p) => p.config) as unknown as Json)
+          : null,
       });
     }
 

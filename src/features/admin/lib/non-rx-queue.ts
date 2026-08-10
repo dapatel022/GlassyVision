@@ -43,7 +43,10 @@ export async function getNonRxQueueItems(supabase: SupabaseClient): Promise<NonR
     // Membership purchases (SUB-*) are virtual products with no physical
     // fulfillment; Shopify never marks them shipped, so without this they sit
     // in the queue forever and can be "released" as phantom lab jobs.
-    .not('sku', 'like', 'SUB-%');
+    .not('sku', 'like', 'SUB-%')
+    // Premium-frame surcharge lines (SURCH-*) are charge carriers paired to a
+    // membership redemption, not fulfillable units — same rationale as SUB-*.
+    .not('sku', 'like', 'SURCH-%');
 
   const rows = (candidates ?? []) as unknown as CandidateRow[];
 

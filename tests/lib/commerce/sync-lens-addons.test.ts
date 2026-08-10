@@ -116,3 +116,82 @@ describe('syncShopifyOrder — lens add-on pairing (spec 2026-07-29)', () => {
     expect(addon).toMatchObject({ addon_for_ref: 'sku', is_rx_required: false });
   });
 });
+
+describe('syncShopifyOrder — pair configs + SURCH- charge carriers (plan-builder Task 4)', () => {
+  it('persists _pair_N properties as pair_configs on the membership line', async () => {
+    const { client, lineUpsert } = buildClient();
+    const { syncShopifyOrder } = await import('@/lib/commerce/sync');
+    const result = await syncShopifyOrder({
+      id: 9001, name: 'GV-9001',
+      line_items: [{
+        id: 111, product_id: 1, variant_id: 43038182735943, title: 'GlassyVision Membership — Trio',
+        sku: 'SUB-3PAIR', price: '219.00', quantity: 1,
+        properties: [
+          { name: 'is_rx_required', value: 'false' },
+          { name: '_pair_1', value: '{"v":43021235028039,"h":"dusk-wayfarer","l":"single_vision","u":[],"t":"none"}' },
+          { name: '_pair_2', value: '{"v":43021235028040,"h":"marina-oval-sun","l":"non_rx","u":["photochromic"],"t":"grey"}' },
+        ],
+      }],
+    }, client);
+
+    expect(result.success).toBe(true);
+    const [membershipLine] = upsertedLines(lineUpsert);
+    expect(membershipLine.sku).toBe('SUB-3PAIR');
+    expect(membershipLine.pair_configs).toHaveLength(2);
+    expect((membershipLine.pair_configs as Array<Record<string, unknown>>)[0]).toMatchObject({ v: 43021235028039, l: 'single_vision' });
+  });
+
+  it('drops malformed pair properties without failing the sync (fail-safe)', async () => {
+    const { client, lineUpsert } = buildClient();
+    const { syncShopifyOrder } = await import('@/lib/commerce/sync');
+    const result = await syncShopifyOrder({
+      id: 9002, name: 'GV-9002',
+      line_items: [{
+        id: 112, product_id: 1, variant_id: 43038182735943, title: 'Membership', sku: 'SUB-2PAIR',
+        price: '179.00', quantity: 1,
+        properties: [{ name: '_pair_1', value: 'not-json' }],
+      }],
+    }, client);
+
+    expect(result.success).toBe(true);
+    const [membershipLine] = upsertedLines(lineUpsert);
+    expect(membershipLine.pair_configs).toBeNull();
+  });
+
+  it('treats SURCH- lines as addon charge carriers (never Rx, no pair_configs)', async () => {
+    const { client, lineUpsert } = buildClient();
+    const { syncShopifyOrder } = await import('@/lib/commerce/sync');
+    const result = await syncShopifyOrder({
+      id: 9003, name: 'GV-9003',
+      line_items: [{
+        id: 113, product_id: 2, variant_id: 777, title: 'Premium frame surcharge', sku: 'SURCH-PREMIUM',
+        price: '40.00', quantity: 1, properties: [],
+      }],
+    }, client);
+
+    expect(result.success).toBe(true);
+    const [line] = upsertedLines(lineUpsert);
+    expect(line.addon_for_ref).not.toBeNull();
+    expect(line.is_rx_required).toBe(false);
+  });
+
+  it('membership order with Rx pair configs stays rx none (pairs carry their own Rx)', async () => {
+    const { client, orderInsert } = buildClient();
+    const { syncShopifyOrder } = await import('@/lib/commerce/sync');
+    const result = await syncShopifyOrder({
+      id: 9004, name: 'GV-9004',
+      line_items: [{
+        id: 114, product_id: 1, variant_id: 43038182735943, title: 'Membership', sku: 'SUB-1PAIR',
+        price: '109.00', quantity: 1,
+        properties: [
+          { name: 'is_rx_required', value: 'false' },
+          { name: '_pair_1', value: '{"v":43021235028039,"h":"dusk-wayfarer","l":"progressive","u":["progressive"],"t":"none"}' },
+        ],
+      }],
+    }, client);
+
+    expect(result.success).toBe(true);
+    const inserted = (orderInsert.mock.calls[0] as unknown[])[0] as { rx_status: string };
+    expect(inserted.rx_status).toBe('none');
+  });
+});
