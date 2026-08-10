@@ -96,7 +96,9 @@ describe('provisionMembershipFromOrder', () => {
     const membershipInsert = vi.fn(() => ({ select: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint' } }) }) }));
     const slotInsert = vi.fn(() => Promise.resolve({ error: null }));
     from.mockImplementation((t: string) => {
-      if (t === 'order_line_items') return { select: () => ({ eq: () => Promise.resolve({ data: [{ variant_id: 222, product_id: 111 }], error: null }) }) };
+      // pair_configs present on the line item — proves auto-redeem is gated on
+      // a fresh insert, not merely on there being configs to redeem.
+      if (t === 'order_line_items') return { select: () => ({ eq: () => Promise.resolve({ data: [{ variant_id: 222, product_id: 111, sku: 'SUB-3PAIR', pair_configs: [{ v: 100, h: 'aviator-a', l: 'non_rx', u: [], t: 'none' }] }], error: null }) }) };
       if (t === 'subscription_plans') return { select: () => ({ eq: () => Promise.resolve({ data: [activePlan], error: null }) }) };
       if (t === 'subscription_memberships') return { insert: membershipInsert };
       if (t === 'subscription_redemptions') return { insert: slotInsert };
@@ -106,6 +108,7 @@ describe('provisionMembershipFromOrder', () => {
     const res = await provisionMembershipFromOrder({ id: 'o1', shopify_order_id: 555, customer_id: 'c1', financial_status: 'paid' } as never, supabase as never);
     expect(res.provisioned).toBe(false);
     expect(slotInsert).not.toHaveBeenCalled();
+    expect(autoRedeemConfiguredPairs).not.toHaveBeenCalled();
   });
 
   it('flags a SECOND membership purchase by an active member instead of swallowing it', async () => {
@@ -115,7 +118,8 @@ describe('provisionMembershipFromOrder', () => {
     const auditInsert = vi.fn(() => Promise.resolve({ error: null }));
     const slotInsert = vi.fn(() => Promise.resolve({ error: null }));
     from.mockImplementation((t: string) => {
-      if (t === 'order_line_items') return { select: () => ({ eq: () => Promise.resolve({ data: [{ variant_id: 222, product_id: 111 }], error: null }) }) };
+      // pair_configs present on the line item — same rationale as above.
+      if (t === 'order_line_items') return { select: () => ({ eq: () => Promise.resolve({ data: [{ variant_id: 222, product_id: 111, sku: 'SUB-3PAIR', pair_configs: [{ v: 100, h: 'aviator-a', l: 'non_rx', u: [], t: 'none' }, { v: 101, h: 'aviator-b', l: 'non_rx', u: [], t: 'none' }] }], error: null }) }) };
       if (t === 'subscription_plans') return { select: () => ({ eq: () => Promise.resolve({ data: [activePlan], error: null }) }) };
       if (t === 'subscription_memberships') return { insert: membershipInsert };
       if (t === 'subscription_redemptions') return { insert: slotInsert };
@@ -127,6 +131,7 @@ describe('provisionMembershipFromOrder', () => {
     expect(res.provisioned).toBe(false);
     expect(res.conflict).toBe('active_membership_exists');
     expect(slotInsert).not.toHaveBeenCalled();
+    expect(autoRedeemConfiguredPairs).not.toHaveBeenCalled();
     expect(auditInsert).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'membership_provision_conflict' }),
     );
@@ -298,6 +303,62 @@ describe('provisionMembershipFromOrder', () => {
       supabase,
     );
     const commTypes = commsInsert.mock.calls.map((c) => (c[0] as { type: string }).type);
+    expect(commTypes).toContain('slot_unlocked');
+  });
+
+  it('carries CAD settlement currency onto both the membership row and the auto-redeem ctx', async () => {
+    const pairConfigs = [{ v: 100, h: 'aviator-a', l: 'non_rx', u: [], t: 'none' }];
+    autoRedeemConfiguredPairs.mockResolvedValueOnce({ redeemed: 1, fallbacks: 0 });
+    const { membershipInsert } = happyMocksWithLineItem({ variant_id: 222, product_id: 111, sku: 'SUB-3PAIR', pair_configs: pairConfigs });
+    const { provisionMembershipFromOrder } = await import('@/features/subscriptions/provision-membership');
+    const order = { id: 'o1', shopify_order_id: 555, customer_id: 'c1', customer_email: 'a@b.com', currency: 'CAD', financial_status: 'paid', shipping_address: { country_code: 'CA' } };
+    const res = await provisionMembershipFromOrder(order as never, supabase as never);
+    expect(res.provisioned).toBe(true);
+    expect(membershipInsert).toHaveBeenCalledWith(expect.objectContaining({ currency: 'cad' }));
+    expect(autoRedeemConfiguredPairs).toHaveBeenCalledWith(
+      pairConfigs,
+      expect.objectContaining({ currency: 'cad' }),
+      supabase,
+    );
+  });
+
+  it('gates slot_unlocked on redeemed alone, not redeemed + fallbacks (a status_update_failed pair counts as neither)', async () => {
+    const pairConfigs = [
+      { v: 100, h: 'aviator-a', l: 'non_rx', u: [], t: 'none' },
+      { v: 101, h: 'aviator-b', l: 'non_rx', u: [], t: 'none' },
+      { v: 102, h: 'aviator-c', l: 'non_rx', u: [], t: 'none' },
+    ];
+    // 1 redeemed + 1 fallback + 1 anomaly (status_update_failed, counted as
+    // neither) = only 2 accounted for out of 3 configs. openSlots must be
+    // computed as pairs_count - redeemed (3 - 1 = 2), proving the third,
+    // unaccounted-for pair still leaves its slot open and still triggers
+    // slot_unlocked rather than being silently dropped from the math.
+    autoRedeemConfiguredPairs.mockResolvedValueOnce({ redeemed: 1, fallbacks: 1 });
+    const { commsInsert } = happyMocksWithLineItem({ variant_id: 222, product_id: 111, sku: 'SUB-3PAIR', pair_configs: pairConfigs });
+    const { provisionMembershipFromOrder } = await import('@/features/subscriptions/provision-membership');
+    const order = { id: 'o1', shopify_order_id: 555, customer_id: 'c1', customer_email: 'a@b.com', currency: 'usd', financial_status: 'paid', shipping_address: { country_code: 'US' } };
+    const res = await provisionMembershipFromOrder(order as never, supabase as never);
+    expect(res.provisioned).toBe(true);
+    const commTypes = commsInsert.mock.calls.map((c) => (c[0] as { type: string }).type);
+    expect(commTypes).toContain('slot_unlocked');
+  });
+
+  it('still provisions and still sends the welcome email when autoRedeemConfiguredPairs itself throws (fail-safe)', async () => {
+    const pairConfigs = [{ v: 100, h: 'aviator-a', l: 'non_rx', u: [], t: 'none' }];
+    autoRedeemConfiguredPairs.mockRejectedValueOnce(new Error('destination gate blew up'));
+    const { membershipInsert, slotInsert, commsInsert } = happyMocksWithLineItem({ variant_id: 222, product_id: 111, sku: 'SUB-3PAIR', pair_configs: pairConfigs });
+    const { provisionMembershipFromOrder } = await import('@/features/subscriptions/provision-membership');
+    const order = { id: 'o1', shopify_order_id: 555, customer_id: 'c1', customer_email: 'a@b.com', currency: 'usd', financial_status: 'paid', shipping_address: { country_code: 'US' } };
+    const res = await provisionMembershipFromOrder(order as never, supabase as never);
+    expect(res.provisioned).toBe(true);
+    expect(res.membershipId).toBe('mem-1');
+    expect(membershipInsert).toHaveBeenCalledTimes(1);
+    const slotCalls = slotInsert.mock.calls as unknown as unknown[][];
+    expect(slotCalls[0][0]).toHaveLength(3);
+    const commTypes = commsInsert.mock.calls.map((c) => (c[0] as { type: string }).type);
+    expect(commTypes).toContain('membership_welcome');
+    // openSlots defaults to pairs_count (3) when auto-redeem throws, so
+    // slot_unlocked still goes out too.
     expect(commTypes).toContain('slot_unlocked');
   });
 

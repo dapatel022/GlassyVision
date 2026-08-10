@@ -141,10 +141,20 @@ describe('Shopify Webhook Route Handler', () => {
     mockVerifyWebhook.mockReturnValueOnce(true);
     mockSyncShopifyOrder.mockResolvedValueOnce({ success: true, orderId: 'ord-paid' });
     const update = eventUpdate();
-    const orderRow = { id: 'ord-paid', shopify_order_id: 2002, customer_id: 'c1', customer_email: 'a@b.com', currency: 'usd', financial_status: 'paid' };
+    // shipping_address included: provisioning's auto-redeem branch (Task 7)
+    // reads it verbatim as `shipTo` — if a future refactor drops the column
+    // from the orders select, this row (and the select-column assertion
+    // below) must catch it, not silently null out the destination gate.
+    const orderRow = {
+      id: 'ord-paid', shopify_order_id: 2002, customer_id: 'c1', customer_email: 'a@b.com',
+      currency: 'usd', financial_status: 'paid', shipping_address: { country_code: 'US' },
+    };
+    // Spy directly on the `orders.select(...)` call so we can pin the actual
+    // column list the route asks for, not just the fixture data returned.
+    const ordersSelectSpy = vi.fn((_cols: string) => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: orderRow, error: null }) }) }));
     mockFrom.mockImplementation((t: string) => {
       if (t === 'webhook_events') return { insert: eventInsert({ data: { id: 'log-paid' }, error: null }), update };
-      if (t === 'orders') return { select: ordersSelect({ data: orderRow, error: null }) };
+      if (t === 'orders') return { select: ordersSelectSpy };
       return {};
     });
 
@@ -155,6 +165,7 @@ describe('Shopify Webhook Route Handler', () => {
     ));
     expect(res.status).toBe(200);
     expect(mockSyncShopifyOrder).toHaveBeenCalledTimes(1);
+    expect(ordersSelectSpy).toHaveBeenCalledWith(expect.stringContaining('shipping_address'));
     expect(mockProvision).toHaveBeenCalledWith(orderRow, expect.any(Object));
   });
 

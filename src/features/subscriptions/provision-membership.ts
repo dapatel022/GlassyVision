@@ -171,19 +171,34 @@ export async function provisionMembershipFromOrder(
         after_data: { order_id: order.id, reason: validated.error } as never,
       });
     } else if (validated.configs.length > 0) {
-      const { redeemed } = await autoRedeemConfiguredPairs(
-        validated.configs,
-        {
+      // autoRedeemConfiguredPairs guarantees no throw for a single bad PAIR, but
+      // its up-front destination gate and audit inserts sit outside that
+      // per-pair try — a throw there must NEVER propagate out of provisioning:
+      // the membership + slots are already committed, so an uncaught error here
+      // would 5xx the webhook, drop the welcome/slot_unlocked emails, and (since
+      // the retry hits the shopify_order_id idempotency short-circuit) lose them
+      // permanently. Leave openSlots at its pairs_count default so both emails
+      // still go out as if no auto-redeem had been attempted.
+      try {
+        const { redeemed } = await autoRedeemConfiguredPairs(
+          validated.configs,
+          {
+            membershipId: membership.id,
+            orderId: order.id,
+            customerId: order.customer_id,
+            customerEmail: order.customer_email ?? null,
+            currency: membershipCurrency,
+            shipTo: order.shipping_address ?? null,
+          },
+          supabase,
+        );
+        openSlots = plan.pairs_count - redeemed;
+      } catch (err) {
+        console.error('[provision-membership] auto-redeem threw (non-gating)', {
           membershipId: membership.id,
-          orderId: order.id,
-          customerId: order.customer_id,
-          customerEmail: order.customer_email ?? null,
-          currency: membershipCurrency,
-          shipTo: order.shipping_address ?? null,
-        },
-        supabase,
-      );
-      openSlots = plan.pairs_count - redeemed;
+          error: err instanceof Error ? err.message : 'unknown',
+        });
+      }
     }
   }
 
