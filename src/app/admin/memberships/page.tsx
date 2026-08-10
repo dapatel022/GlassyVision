@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getCurrentUser, isAdminRole } from '@/lib/auth/middleware';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { formatFallbackRow } from '@/features/admin/lib/pair-fallbacks';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,6 +40,14 @@ export default async function MembershipsAdminPage({ searchParams }: PageProps) 
 
   const { data: memberships } = await query;
 
+  const { data: pairFallbackRows } = await supabase
+    .from('audit_log')
+    .select('id, entity_id, created_at, after_data')
+    .eq('action', 'auto_redeem_pair_failed')
+    .order('created_at', { ascending: false })
+    .limit(20);
+  const pairFallbacks = (pairFallbackRows ?? []).map((row) => ({ id: row.id, ...formatFallbackRow(row) }));
+
   return (
     <div className="space-y-6">
       <div>
@@ -47,6 +56,48 @@ export default async function MembershipsAdminPage({ searchParams }: PageProps) 
         </Link>
       </div>
       <h1 className="font-sans text-2xl font-black tracking-tight uppercase text-ink">Memberships</h1>
+
+      <section className="space-y-2">
+        <h2 className="font-mono text-xs uppercase tracking-widest text-muted-soft">
+          Pair fallbacks needing attention
+        </h2>
+        {pairFallbacks.length === 0 ? (
+          <p className="text-muted">None — all configured pairs provisioned cleanly.</p>
+        ) : (
+          <div className="overflow-x-auto bg-white border border-line rounded-lg">
+            <table className="w-full text-sm">
+              <thead className="bg-base-deeper text-xs font-mono uppercase tracking-wider text-muted-soft">
+                <tr>
+                  <th className="text-left px-4 py-3">Membership</th>
+                  <th className="text-right px-4 py-3">Pair</th>
+                  <th className="text-left px-4 py-3">Frame</th>
+                  <th className="text-left px-4 py-3">Reason</th>
+                  <th className="text-left px-4 py-3">When</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pairFallbacks.map((row) => (
+                  <tr key={row.id} className="border-t border-line">
+                    <td className="px-4 py-3 font-mono">
+                      {row.membershipId === '—' ? (
+                        row.membershipId
+                      ) : (
+                        <Link href={`/admin/memberships/${row.membershipId}`} className="text-accent hover:underline">
+                          {row.membershipId.slice(0, 8)}…
+                        </Link>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums">{row.pairIndex}</td>
+                    <td className="px-4 py-3 font-mono">{row.handle}</td>
+                    <td className="px-4 py-3">{row.reason}</td>
+                    <td className="px-4 py-3 text-muted">{row.when}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       <div className="flex flex-wrap items-center gap-2">
         {STATUS_FILTERS.map((s) => {
