@@ -1478,8 +1478,9 @@ git commit -m "feat(admin): surface auto-redeem pair fallbacks for manual refund
   2. Run `scripts/setup-frame-surcharges.js`; publish `frame-surcharges` to the headless channel.
   3. Set `product_metadata.subscription_tier='premium'` + surcharge variant id/price for premium frames.
   4. Reprice tiers in Shopify: Solo $109 / Duo $179 / Trio $219 (per spec §Business goal).
-  5. Enable Bogus Gateway → E2E: builder → checkout (card `1`) → webhook → slots redeemed (`awaiting_rx`/`awaiting_fulfillment`), Rx-upload email received, fallback path exercised by configuring an out-of-stock frame.
-  6. Re-validate all pricing when the lab COGS quote lands.
+  5. Re-run `scripts/setup-membership.js` to flip existing SUB-* variants to `requires_shipping: true` (final-review C1 — without this, Shopify skips the address step on every configured checkout and auto-redeem's destination gate fails every pair closed). Configure a free/zero-cost shipping rate in Shopify so the now-mandatory address step never adds cost to a membership checkout.
+  6. Enable Bogus Gateway → E2E: builder → checkout (card `1`) → webhook → confirm `orders/paid` carries a real `shipping_address` → slots redeemed (`awaiting_rx`/`awaiting_fulfillment`), Rx-upload email received, fallback path exercised by configuring an out-of-stock frame.
+  7. Re-validate all pricing when the lab COGS quote lands.
 - [ ] **Step 5:** Final commit of any stragglers; dispatch external code review per CLAUDE.md (subagent-driven flow's final review satisfies this).
 
 Done criteria (sprint contract): all tests green with output shown; webpack build succeeds; screenshots reviewed; fail-closed checks pass; zero hardcoded prices in new code (`grep -rn '\$[0-9]' src/features/subscriptions/builder src/lib/commerce/frame-surcharge-pricing.ts` → nothing); launch checklist delivered.

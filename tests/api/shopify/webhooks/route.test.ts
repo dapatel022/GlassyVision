@@ -166,6 +166,10 @@ describe('Shopify Webhook Route Handler', () => {
     expect(res.status).toBe(200);
     expect(mockSyncShopifyOrder).toHaveBeenCalledTimes(1);
     expect(ordersSelectSpy).toHaveBeenCalledWith(expect.stringContaining('shipping_address'));
+    // C1: billing_country must also be selected — auto-redeem's destination
+    // gate falls back to it when the shipping address itself has no
+    // country_code.
+    expect(ordersSelectSpy).toHaveBeenCalledWith(expect.stringContaining('billing_country'));
     expect(mockProvision).toHaveBeenCalledWith(orderRow, expect.any(Object));
   });
 

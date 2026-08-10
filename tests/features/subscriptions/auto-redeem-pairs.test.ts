@@ -131,7 +131,19 @@ function stubSupabase() {
       }
       if (table === 'communications') {
         return {
-          select: () => ({ eq: () => ({ eq: () => Promise.resolve({ data: state.priorFallbackComms, error: null }) }) }),
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                contains: (_col: string, val: { membership_id: string }) =>
+                  Promise.resolve({
+                    data: state.priorFallbackComms.filter(
+                      (c) => (c.metadata as { membership_id?: string } | null)?.membership_id === val.membership_id,
+                    ),
+                    error: null,
+                  }),
+              }),
+            }),
+          }),
           insert: () => ({
             select: () => ({
               single: () => state.commsInsertShouldFail
@@ -167,6 +179,7 @@ const CTX = {
   membershipId: 'm1', orderId: 'o1', customerId: 'c1',
   customerEmail: 'buyer@example.com', currency: 'usd',
   shipTo: { country_code: 'US' },
+  billingCountry: 'us',
 };
 const RX_PAIR: PairConfig = { v: 501, h: 'dusk-wayfarer', l: 'single_vision', u: [], t: 'none' };
 const PLANO_PAIR: PairConfig = { v: 502, h: 'marina-oval-sun', l: 'non_rx', u: ['photochromic'], t: 'grey' };
@@ -220,12 +233,30 @@ describe('autoRedeemConfiguredPairs', () => {
     expect(revert?.patch).toMatchObject({ frame_variant_id: null, lens_config: {}, ship_to: null });
   });
 
-  it('non-dispensable destination fails ALL pairs closed with audits', async () => {
+  it('C1: a present but non-dispensable shipping address (GB) fails ALL pairs closed as destination_not_dispensable', async () => {
     const { autoRedeemConfiguredPairs } = await import('@/features/subscriptions/auto-redeem-pairs');
     const result = await autoRedeemConfiguredPairs([RX_PAIR, PLANO_PAIR], { ...CTX, shipTo: { country_code: 'GB' } }, stubSupabase() as never);
     expect(result).toEqual({ redeemed: 0, fallbacks: 2 });
     expect(state.audits).toHaveLength(2);
+    expect(reason(state.audits[0])).toBe('destination_not_dispensable');
+    expect(reason(state.audits[1])).toBe('destination_not_dispensable');
     expect(createRedemptionFulfillmentOrder).not.toHaveBeenCalled();
+  });
+
+  it('C1: a missing shipping address (Shopify skipped the address step — no shipping line on the order) fails ALL pairs closed as no_shipping_address, not the misleading destination_not_dispensable', async () => {
+    const { autoRedeemConfiguredPairs } = await import('@/features/subscriptions/auto-redeem-pairs');
+    const result = await autoRedeemConfiguredPairs([RX_PAIR, PLANO_PAIR], { ...CTX, shipTo: null }, stubSupabase() as never);
+    expect(result).toEqual({ redeemed: 0, fallbacks: 2 });
+    expect(state.audits).toHaveLength(2);
+    expect(reason(state.audits[0])).toBe('no_shipping_address');
+    expect(reason(state.audits[1])).toBe('no_shipping_address');
+    expect(createRedemptionFulfillmentOrder).not.toHaveBeenCalled();
+  });
+
+  it('C1: a shipping address present with a US billing-country fallback (no country_code on the address itself) still redeems', async () => {
+    const { autoRedeemConfiguredPairs } = await import('@/features/subscriptions/auto-redeem-pairs');
+    const result = await autoRedeemConfiguredPairs([PLANO_PAIR], { ...CTX, shipTo: {}, billingCountry: 'us' }, stubSupabase() as never);
+    expect(result).toEqual({ redeemed: 1, fallbacks: 0 });
   });
 
   it('a throwing pair is audited, does not break the batch, and releases its reserved inventory before reverting (PII cleared)', async () => {
@@ -365,6 +396,15 @@ describe('autoRedeemConfiguredPairs', () => {
     const result = await autoRedeemConfiguredPairs([RX_PAIR, PLANO_PAIR], CTX, stubSupabase() as never);
     expect(result).toEqual({ redeemed: 1, fallbacks: 1 });
     expect(sendEmail).not.toHaveBeenCalled();
+  });
+
+  it("M3: the prior-comm dedupe query is bounded to this membership's rows (a different membership's sent comm does not suppress this one's email)", async () => {
+    state.reserveFailsFor = [501];
+    state.priorFallbackComms = [{ metadata: { membership_id: 'some-other-membership' }, status: 'sent' }];
+    const { autoRedeemConfiguredPairs } = await import('@/features/subscriptions/auto-redeem-pairs');
+    const result = await autoRedeemConfiguredPairs([RX_PAIR, PLANO_PAIR], CTX, stubSupabase() as never);
+    expect(result).toEqual({ redeemed: 1, fallbacks: 1 });
+    expect(sendEmail).toHaveBeenCalledTimes(1);
   });
 
   it('N1: a rejecting release RPC results in exactly one release attempt and does not throw out of the function', async () => {

@@ -123,7 +123,7 @@ export async function POST(request: NextRequest) {
           // topics — or a non-membership order — is a safe no-op.
           const { data: orderRow } = await supabase
             .from('orders')
-            .select('id, shopify_order_id, customer_id, customer_email, currency, financial_status, shipping_address')
+            .select('id, shopify_order_id, customer_id, customer_email, currency, financial_status, shipping_address, billing_country')
             .eq('shopify_order_id', shopifyOrderId)
             .maybeSingle();
 

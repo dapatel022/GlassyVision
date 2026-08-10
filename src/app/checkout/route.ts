@@ -24,6 +24,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Cart is empty' }, { status: 400 });
   }
 
+  // M6: provisionMembershipFromOrder mints exactly one membership from the
+  // FIRST SUB-* line item it finds on a paid order (see provision-membership.ts).
+  // A second membership line — configured or not — would still be charged at
+  // checkout but never provisioned. Reject before a Shopify cart is ever created.
+  const membershipLineCount = lines.filter((l) => l.productHandle === 'membership').length;
+  if (membershipLineCount > 1) {
+    return NextResponse.json({ error: 'Only one membership can be purchased per checkout' }, { status: 409 });
+  }
+
   // Lens upgrades are charged as separate line items paired to their frame
   // line. Selection is re-derived server-side from lensConfig and priced from
   // Shopify — the client is never trusted with prices or variant ids.
@@ -99,31 +108,68 @@ export async function POST(request: NextRequest) {
       }
       const configs = validated.configs;
 
-      // Eligibility + premium lookup: every chosen frame must carry a
-      // product_metadata row with subscription_tier 'included' or 'premium'
-      // (same gate the redeem page enforces) — anything else (no row, or a
-      // tier like 'excluded') must never be provisioned for free. FAIL
-      // CLOSED on a DB error too: a null `data` from a failed query must
-      // never be read as "no premium frames".
       const supabase = createAdminClient();
+
+      // I3: subscription_plans.pairs_count (admin-editable) is the source of
+      // truth provisioning actually uses to materialize redemption slots —
+      // TIER_BY_SKU (membership-pricing.ts) above is a static price-display
+      // fallback that only this route reads. An admin who lowers pairs_count
+      // after launch must not have checkout keep charging for (and
+      // provisioning could never fulfill) a pair beyond the new cap. Fail
+      // closed if no active plan row matches this variant at all — that
+      // means checkout would be selling a tier provisioning cannot fulfill.
+      const variantIdNum = Number(l.variantId.split('/').pop());
+      const { data: planRow, error: planError } = await supabase
+        .from('subscription_plans')
+        .select('pairs_count')
+        .eq('shopify_variant_id', variantIdNum)
+        .eq('status', 'active')
+        .maybeSingle();
+      if (planError || !planRow) {
+        console.error('[checkout] subscription_plans lookup failed — blocking configured purchase', { variantId: l.variantId, error: planError });
+        return NextResponse.json({ error: 'Membership plan is unavailable — please try again shortly' }, { status: 409 });
+      }
+      const planPairsCount = (planRow as { pairs_count: number }).pairs_count;
+      if (configs.length > planPairsCount) {
+        return NextResponse.json({ error: `This plan currently covers ${planPairsCount} pair(s)` }, { status: 409 });
+      }
+
+      // Eligibility + premium + Rx-capability lookup: every chosen frame must
+      // carry a product_metadata row with subscription_tier 'included' or
+      // 'premium' (same gate the redeem page enforces) — anything else (no
+      // row, or a tier like 'excluded') must never be provisioned for free.
+      // FAIL CLOSED on a DB error too: a null `data` from a failed query must
+      // never be read as "no premium frames".
       const { data: metaRows, error: metaError } = await supabase
         .from('product_metadata')
-        .select('shopify_variant_id, subscription_tier')
+        .select('shopify_variant_id, subscription_tier, is_rx_capable')
         .in('shopify_variant_id', configs.map((c) => c.v));
       if (metaError) {
         console.error('[checkout] product_metadata lookup failed — blocking configured purchase', metaError);
         return NextResponse.json({ error: 'Membership frame eligibility is unavailable — please try again shortly' }, { status: 409 });
       }
-      const tierByVariant = new Map(
-        ((metaRows ?? []) as Array<{ shopify_variant_id: number; subscription_tier: string | null }>)
-          .map((r) => [r.shopify_variant_id, r.subscription_tier]),
-      );
+      const metaRowsTyped = (metaRows ?? []) as Array<{
+        shopify_variant_id: number;
+        subscription_tier: string | null;
+        is_rx_capable: boolean | null;
+      }>;
+      const tierByVariant = new Map(metaRowsTyped.map((r) => [r.shopify_variant_id, r.subscription_tier]));
+      const rxCapableByVariant = new Map(metaRowsTyped.map((r) => [r.shopify_variant_id, r.is_rx_capable === true]));
       const ineligible = configs.some((c) => {
         const t = tierByVariant.get(c.v);
         return t !== 'included' && t !== 'premium';
       });
       if (ineligible) {
         return NextResponse.json({ error: "That frame isn't available in a membership plan" }, { status: 409 });
+      }
+      // I2: an Rx-intent pair (anything other than 'non_rx') on a frame the
+      // catalog has NOT marked Rx-capable must 409 HERE, before any charge —
+      // the same gate auto-redeem-pairs.ts enforces post-payment
+      // (`frame_not_rx_capable`). Failing only after payment would charge the
+      // customer for a pair that can never be fulfilled as configured.
+      const rxIneligible = configs.some((c) => c.l !== 'non_rx' && !rxCapableByVariant.get(c.v));
+      if (rxIneligible) {
+        return NextResponse.json({ error: "That frame isn't available with prescription lenses." }, { status: 409 });
       }
       const premiumSet = new Set(configs.filter((c) => tierByVariant.get(c.v) === 'premium').map((c) => c.v));
       const surcharge = premiumSet.size > 0 ? await getFrameSurchargePricing() : null;

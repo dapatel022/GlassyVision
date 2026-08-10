@@ -98,6 +98,12 @@ beforeEach(() => {
 });
 
 describe('getBuilderData', () => {
+  it('M5: requests the catalog with first=250, not the getProducts default of 50, so a growing catalog never silently drops frames', async () => {
+    const { getBuilderData } = await import('@/features/subscriptions/lib/builder-data');
+    await getBuilderData();
+    expect(getProducts).toHaveBeenCalledWith(250);
+  });
+
   it('assembles frames with premium and rxCapable flags on the happy path', async () => {
     getProducts.mockResolvedValue([
       product({ handle: 'dusk-wayfarer', variantGid: 'gid://shopify/ProductVariant/501' }),

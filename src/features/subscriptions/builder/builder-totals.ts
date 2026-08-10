@@ -39,7 +39,16 @@ export function builderTotals(state: BuilderState, data: BuilderData): BuilderTo
   for (const pair of state.pairs) {
     if (!pair) continue;
     const frame = data.frames.find((f) => f.handle === pair.h);
-    const addon = pairAddonTotal(pair, frame?.premium ?? false, data.lensPricing, data.surcharge);
+    // M1: a configured pair whose frame is missing from data.frames (dropped
+    // from the catalog, deprovisioned, or a stale handle) must fail closed
+    // as `blocked` — silently defaulting premium to false would omit a real
+    // surcharge from the displayed total and let a customer hit a generic
+    // 409 at checkout with no explanation.
+    if (!frame) {
+      blocked = true;
+      continue;
+    }
+    const addon = pairAddonTotal(pair, frame.premium, data.lensPricing, data.surcharge);
     if (addon === null) {
       blocked = true;
       continue;

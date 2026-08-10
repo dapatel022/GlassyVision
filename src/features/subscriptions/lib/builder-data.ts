@@ -51,7 +51,11 @@ interface ProductMetadataRow {
 
 export async function getBuilderData(): Promise<BuilderData> {
   const [products, tiers, lensPricing, surcharge] = await Promise.all([
-    getProducts(),
+    // M5: getProducts() defaults to first=50 — a growing catalog would
+    // silently drop frames from the builder past that point. 250 is
+    // Shopify's practical per-page ceiling for this query shape and comfortably
+    // covers the catalog for the foreseeable future.
+    getProducts(250),
     getMembershipPricing(),
     getLensUpgradePricing(),
     getFrameSurchargePricing(),

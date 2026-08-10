@@ -5,6 +5,7 @@ import { renderMembershipWelcome } from '@/lib/email/templates/membership-welcom
 import { renderSlotUnlocked } from '@/lib/email/templates/slot-unlocked';
 import { validatePairConfigs } from '@/features/subscriptions/lib/pair-config';
 import { autoRedeemConfiguredPairs } from '@/features/subscriptions/auto-redeem-pairs';
+import { captureException } from '@/lib/observability/sentry';
 
 interface OrderRow {
   id: string;
@@ -17,6 +18,10 @@ interface OrderRow {
   // payload, verbatim). Narrowed to a plain object — or null — right before
   // it is handed to auto-redeem; never trust the DB shape blindly.
   shipping_address?: Json;
+  // orders.billing_country (db-constrained to 'us'/'ca') — threaded into the
+  // auto-redeem destination gate as a fallback when the shipping address
+  // itself carries no country_code (C1).
+  billing_country?: string | null;
 }
 
 interface RedemptionPolicy {
@@ -147,6 +152,7 @@ export async function provisionMembershipFromOrder(
         });
         if (auditErr) {
           console.error('[provision-membership] conflict audit insert failed', auditErr);
+          captureException(auditErr, { scope: 'provision-membership', step: 'conflict_audit_insert', orderId: order.id });
         }
         return { provisioned: false, conflict: 'active_membership_exists' };
       }
@@ -207,6 +213,7 @@ export async function provisionMembershipFromOrder(
             customerEmail: order.customer_email ?? null,
             currency: membershipCurrency,
             shipTo: asShipToRecord(order.shipping_address),
+            billingCountry: order.billing_country ?? null,
           },
           supabase,
         );
@@ -216,6 +223,7 @@ export async function provisionMembershipFromOrder(
           membershipId: membership.id,
           error: err instanceof Error ? err.message : 'unknown',
         });
+        captureException(err, { scope: 'provision-membership', step: 'auto_redeem_threw', membershipId: membership.id, orderId: order.id });
       }
     }
   }
@@ -232,6 +240,7 @@ export async function provisionMembershipFromOrder(
       membershipId: membership.id,
       error: message,
     });
+    captureException(err, { scope: 'provision-membership', step: 'lifecycle_email_send', membershipId: membership.id, orderId: order.id });
   }
 
   return { provisioned: true, membershipId: membership.id };

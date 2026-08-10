@@ -322,6 +322,42 @@ describe('provisionMembershipFromOrder', () => {
     );
   });
 
+  it('C1: threads orders.billing_country onto the auto-redeem ctx as billingCountry', async () => {
+    const pairConfigs = [{ v: 100, h: 'aviator-a', l: 'non_rx', u: [], t: 'none' }];
+    autoRedeemConfiguredPairs.mockResolvedValueOnce({ redeemed: 1, fallbacks: 0 });
+    happyMocksWithLineItem({ variant_id: 222, product_id: 111, sku: 'SUB-3PAIR', pair_configs: pairConfigs });
+    const { provisionMembershipFromOrder } = await import('@/features/subscriptions/provision-membership');
+    const order = {
+      id: 'o1', shopify_order_id: 555, customer_id: 'c1', customer_email: 'a@b.com', currency: 'usd',
+      financial_status: 'paid', shipping_address: { country_code: 'US' }, billing_country: 'us',
+    };
+    const res = await provisionMembershipFromOrder(order as never, supabase as never);
+    expect(res.provisioned).toBe(true);
+    expect(autoRedeemConfiguredPairs).toHaveBeenCalledWith(
+      pairConfigs,
+      expect.objectContaining({ billingCountry: 'us' }),
+      supabase,
+    );
+  });
+
+  it('C1: a missing orders.billing_country threads through as null, not undefined', async () => {
+    const pairConfigs = [{ v: 100, h: 'aviator-a', l: 'non_rx', u: [], t: 'none' }];
+    autoRedeemConfiguredPairs.mockResolvedValueOnce({ redeemed: 0, fallbacks: 1 });
+    happyMocksWithLineItem({ variant_id: 222, product_id: 111, sku: 'SUB-3PAIR', pair_configs: pairConfigs });
+    const { provisionMembershipFromOrder } = await import('@/features/subscriptions/provision-membership');
+    const order = {
+      id: 'o1', shopify_order_id: 555, customer_id: 'c1', customer_email: 'a@b.com', currency: 'usd',
+      financial_status: 'paid', shipping_address: null,
+    };
+    const res = await provisionMembershipFromOrder(order as never, supabase as never);
+    expect(res.provisioned).toBe(true);
+    expect(autoRedeemConfiguredPairs).toHaveBeenCalledWith(
+      pairConfigs,
+      expect.objectContaining({ billingCountry: null }),
+      supabase,
+    );
+  });
+
   it('narrows a non-object shipping_address (e.g. a malformed string) to shipTo: null instead of passing it through', async () => {
     const pairConfigs = [{ v: 100, h: 'aviator-a', l: 'non_rx', u: [], t: 'none' }];
     autoRedeemConfiguredPairs.mockResolvedValueOnce({ redeemed: 0, fallbacks: 1 });

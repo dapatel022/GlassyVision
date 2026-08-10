@@ -70,6 +70,15 @@ describe('builderTotals', () => {
     expect(totals?.tierPrice).toBe(149);
   });
 
+  it('M1: a configured pair whose frame is missing from data.frames is blocked, not silently priced as non-premium', () => {
+    const missingFramePair: PairConfig = { v: 999, h: 'no-longer-in-catalog', l: 'non_rx', u: [], t: 'none' };
+    const state: BuilderState = { tier: 'solo', pairs: [missingFramePair] };
+    const totals = builderTotals(state, DATA);
+    expect(totals?.blocked).toBe(true);
+    expect(totals?.addons).toBe(0);
+    expect(totals?.tierPrice).toBe(149);
+  });
+
   it('returns null when tiers are unavailable', () => {
     const state: BuilderState = { tier: 'duo', pairs: [null, null] };
     expect(builderTotals(state, { ...DATA, tiers: null })).toBeNull();

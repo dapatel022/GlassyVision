@@ -49,9 +49,15 @@ async function gql(query, variables) {
   });
   return res.json();
 }
+// A membership genuinely ships glasses (configured pairs are fulfilled),
+// unlike the LENSUP-*/SURCH-* charge-carrier products — those must stay
+// requires_shipping:false. requires_shipping:false here means Shopify skips
+// the shipping-address step at checkout entirely, so `orders/paid` carries
+// shipping_address: null and every configured pair's destination gate then
+// fails closed (C1). requires_shipping is a correctness flag, never a price.
 const variantPayload = (t) => ({
   option1: t.title, sku: t.sku, price: t.price, taxable: true,
-  requires_shipping: false, inventory_management: null,
+  requires_shipping: true, inventory_management: null,
 });
 
 async function main() {
@@ -74,6 +80,23 @@ async function main() {
       await rest('POST', `products/${product.id}/variants.json`, { variant: variantPayload(t) });
     }
     product = (await rest('GET', `products/${product.id}.json?fields=id,handle,variants`)).product;
+  }
+
+  // 1.5. Reconcile: this script is otherwise create-if-missing and never
+  // touches existing variants, but requires_shipping is a correctness flag
+  // (not a price) — a SUB-* variant created before this fix, or edited back
+  // to false in Shopify admin, must be patched to true so the shipping
+  // address step (and therefore ctx.shipTo in auto-redeem) is never skipped.
+  // Prices are NEVER included in this PUT.
+  const { variants: liveVariants } = await rest('GET', `products/${product.id}/variants.json`);
+  const tierSkus = new Set(TIERS.map((t) => t.sku));
+  const toFix = (liveVariants || []).filter((v) => tierSkus.has(v.sku) && v.requires_shipping !== true);
+  if (toFix.length === 0) {
+    console.log('requires_shipping reconcile: all SUB-* variants already true — nothing to do.');
+  }
+  for (const v of toFix) {
+    console.log(`Reconciling ${v.sku} (variant ${v.id}): requires_shipping false → true`);
+    await rest('PUT', `variants/${v.id}.json`, { variant: { id: v.id, requires_shipping: true } });
   }
 
   // 2. Publish to the headless channel (idempotent — republish is a no-op)

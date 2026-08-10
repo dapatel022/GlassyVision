@@ -4,6 +4,7 @@ import { pairRedemptionLensConfig, type PairConfig } from '@/features/subscripti
 import { isDispensableDestination } from '@/lib/rx/market';
 import { sendEmail } from '@/lib/email/resend';
 import { renderPairFallback } from '@/lib/email/templates/pair-fallback';
+import { captureException } from '@/lib/observability/sentry';
 
 export interface AutoRedeemContext {
   membershipId: string;
@@ -12,6 +13,9 @@ export interface AutoRedeemContext {
   customerEmail: string | null;
   currency: string | null;
   shipTo: Record<string, unknown> | null;
+  /** orders.billing_country — fallback destination signal for the dispensability
+   * gate below when the shipping address itself carries no country_code. */
+  billingCountry: string | null;
 }
 
 /**
@@ -68,7 +72,10 @@ export async function autoRedeemConfiguredPairs(
         ...extra,
       } as never,
     });
-    if (error) console.error('[auto-redeem] audit insert failed', error);
+    if (error) {
+      console.error('[auto-redeem] audit insert failed', error);
+      captureException(error, { scope: 'auto-redeem', step: 'audit_insert', membershipId: ctx.membershipId, action, pairIndex });
+    }
   };
 
   // A true fallback: the pair did not redeem and its slot is (or should now
@@ -118,6 +125,7 @@ export async function autoRedeemConfiguredPairs(
       .eq('id', slotId);
     if (error) {
       console.error('[auto-redeem] slot revert failed — slot stuck locked', { slotId, error });
+      captureException(error, { scope: 'auto-redeem', step: 'revert_slot', membershipId: ctx.membershipId, slotId, pairIndex });
       await auditAnomaly(pairIndex, config, 'status_update_failed', { slot_id: slotId });
     }
   };
@@ -139,15 +147,33 @@ export async function autoRedeemConfiguredPairs(
         p_redemption_id: slotId,
         p_notes: note,
       });
-      if (error) console.error('[auto-redeem] inventory release failed', error);
+      if (error) {
+        console.error('[auto-redeem] inventory release failed', error);
+        captureException(error, { scope: 'auto-redeem', step: 'release_inventory', membershipId: ctx.membershipId, slotId, variantId });
+      }
     } catch (err) {
       console.error('[auto-redeem] inventory release threw', err);
+      captureException(err, { scope: 'auto-redeem', step: 'release_inventory_threw', membershipId: ctx.membershipId, slotId, variantId });
     }
   };
 
-  // Destination gate up front: Rx/eyewear dispensing is US/CA only. A bad
-  // destination fails EVERY pair closed (slots remain open, membership stands).
-  if (!ctx.shipTo || !isDispensableDestination(ctx.shipTo, null)) {
+  // Destination gate up front. Two distinct failure reasons, kept apart so
+  // the admin queue tells the truth about what's wrong:
+  //  - no shipping address at all: the lab cannot ship without a street
+  //    address, regardless of what market the billing country implies —
+  //    fails EVERY pair closed as `no_shipping_address`, NOT the misleading
+  //    `destination_not_dispensable` (that would read as "wrong country"
+  //    when the real problem is "no address on file").
+  //  - a shipping address that resolves (falling back to billing country
+  //    when the address itself carries no country_code) to a non-US/CA
+  //    market: `destination_not_dispensable`, as before.
+  // Slots remain open and the membership stands in both cases.
+  if (!ctx.shipTo) {
+    for (let i = 0; i < configs.length; i++) await auditFallback(i + 1, configs[i], 'no_shipping_address');
+    await maybeSendFallbackEmail(ctx, fallbacks, supabase);
+    return { redeemed: 0, fallbacks };
+  }
+  if (!isDispensableDestination(ctx.shipTo, ctx.billingCountry)) {
     for (let i = 0; i < configs.length; i++) await auditFallback(i + 1, configs[i], 'destination_not_dispensable');
     await maybeSendFallbackEmail(ctx, fallbacks, supabase);
     return { redeemed: 0, fallbacks };
@@ -308,6 +334,9 @@ export async function autoRedeemConfiguredPairs(
           orderId,
           error: statusErr,
         });
+        captureException(statusErr, {
+          scope: 'auto-redeem', step: 'persist_outcome', membershipId: ctx.membershipId, slotId: slot.id, orderId, pairIndex,
+        });
         await auditAnomaly(pairIndex, config, 'status_update_failed', { slot_id: slot.id, synthesized_order_id: orderId });
         continue;
       }
@@ -331,6 +360,7 @@ export async function autoRedeemConfiguredPairs(
         if (claimedSlotId) await revertSlot(claimedSlotId, pairIndex, config);
       } catch (cleanupErr) {
         console.error('[auto-redeem] pair cleanup after failure itself failed', cleanupErr);
+        captureException(cleanupErr, { scope: 'auto-redeem', step: 'pair_cleanup_after_failure', membershipId: ctx.membershipId, pairIndex });
       }
       await auditFallback(pairIndex, config, reason, orderId ? { synthesized_order_id: orderId } : undefined);
     }
@@ -344,11 +374,16 @@ export async function autoRedeemConfiguredPairs(
 async function maybeSendFallbackEmail(ctx: AutoRedeemContext, fallbacks: number, supabase: SupabaseClient): Promise<void> {
   if (fallbacks === 0 || !ctx.customerEmail) return;
   try {
+    // M3: bounded by metadata.membership_id at the DB layer — without this,
+    // the query (and the JS dedupe below, kept as defense-in-depth) scans
+    // EVERY outbound pair_fallback comm ever sent, across every membership,
+    // and only grows unbounded as the table does.
     const { data: prior } = await supabase
       .from('communications')
       .select('metadata, status')
       .eq('type', 'pair_fallback')
-      .eq('direction', 'outbound');
+      .eq('direction', 'outbound')
+      .contains('metadata', { membership_id: ctx.membershipId });
     const already = ((prior ?? []) as Array<{ metadata: unknown; status: string }>).some(
       (c) => c.status !== 'failed' && (c.metadata as { membership_id?: string } | null)?.membership_id === ctx.membershipId,
     );
@@ -368,6 +403,7 @@ async function maybeSendFallbackEmail(ctx: AutoRedeemContext, fallbacks: number,
       // 00047_pair_fallback_comm_type.sql) — if it doesn't, or any other
       // insert failure occurs, this must be loud, not a silent no-send.
       console.error('[auto-redeem] fallback email comm insert failed', insertErr);
+      captureException(insertErr, { scope: 'auto-redeem', step: 'fallback_email_comm_insert', membershipId: ctx.membershipId });
       return;
     }
     if (!claimed) return;
@@ -380,5 +416,6 @@ async function maybeSendFallbackEmail(ctx: AutoRedeemContext, fallbacks: number,
       .eq('id', (claimed as { id: string }).id);
   } catch (err) {
     console.error('[auto-redeem] fallback email failed (non-gating)', err);
+    captureException(err, { scope: 'auto-redeem', step: 'fallback_email', membershipId: ctx.membershipId });
   }
 }

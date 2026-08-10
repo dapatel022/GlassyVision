@@ -76,6 +76,27 @@ The checkout POST carries:
 - **E2E (against Bogus Gateway once enabled):** full builder → checkout → webhook → slots + synthesized orders + Rx email.
 - Existing 574 tests keep passing; TDD per house rules.
 
+## 6a. Launch checklist addendum — SUB-* shipping (post final-review C1)
+
+A membership genuinely ships glasses (configured pairs are fulfilled through
+the same lab as any other order), so SUB-* variants must be
+`requires_shipping: true`. Shopify skips the shipping-address step entirely
+when no cart line requires shipping — with SUB-* at `false`, `orders/paid`
+carried `shipping_address: null` for every configured-pair checkout, and
+auto-redeem's destination gate then failed every pair closed 100% of the
+time. LENSUP-*/SURCH-* stay `requires_shipping: false` (charge carriers,
+never shippable on their own). Before/at launch:
+
+1. Re-run `scripts/setup-membership.js` — it now reconciles existing SUB-*
+   variants to `requires_shipping: true` (a correctness flag, never a price)
+   in addition to its normal create-if-missing behavior.
+2. Configure a free/zero-cost shipping rate in Shopify for the membership's
+   shipping zone(s) so the now-mandatory address step never adds a shipping
+   cost to a membership checkout.
+3. Re-run the Task 13 Step 4.5 E2E check (Bogus Gateway) and confirm
+   `orders/paid` carries a real `shipping_address` and configured pairs land
+   in `awaiting_rx`/`awaiting_fulfillment` rather than falling back.
+
 ## 6. Commercial appendix (levers, not code — sequenced after launch)
 
 Referral give-$20/get-$20 (>$60 net on repriced Duo); single-pair-buyer win-back email ("your next pair could be $73"); paid social only after attach-rate data proves LTV; FSA/HSA eligibility claim **only after** confirming a prepaid eyewear membership qualifies (do not copy Pair's badge blindly); repricing A/B at low traffic before the 2,000 push.

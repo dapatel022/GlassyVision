@@ -10,10 +10,9 @@ import { builderTotals } from './builder-totals';
 
 /**
  * Review step: per-pair recap, the risk-reversal strip, and the checkout
- * handoff. Fetch/busy/error handling below is copied verbatim from
- * MembershipCTA — the established pattern for the /checkout POST in this
- * codebase — so this button behaves identically to every other "buy" entry
- * point on the site.
+ * handoff. Fetch/busy/error handling below follows the same fetch → busy →
+ * error pattern used by every other "buy" entry point on the site (POST
+ * /checkout, redirect on `checkoutUrl`, surface `error` on failure).
  *
  * The checkout button (and the sticky total, separately) both gate on
  * builderTotals: `totals === null` covers "no tier" / "pricing outage",
