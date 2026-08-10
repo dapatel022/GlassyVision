@@ -3,11 +3,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const sendEmail = vi.fn(async (_input: { subject: string }) => ({ success: true, providerMessageId: 'msg-1' }));
 vi.mock('@/lib/email/resend', () => ({ sendEmail: (input: { subject: string }) => sendEmail(input) }));
 
+const autoRedeemConfiguredPairs = vi.fn(async () => ({ redeemed: 0, fallbacks: 0 }));
+vi.mock('@/features/subscriptions/auto-redeem-pairs', () => ({
+  autoRedeemConfiguredPairs: (...args: unknown[]) =>
+    (autoRedeemConfiguredPairs as unknown as (...a: unknown[]) => Promise<{ redeemed: number; fallbacks: number }>)(...args),
+}));
+
 const from = vi.fn();
 const supabase = { from };
 function table(impl: Record<string, unknown>) { return impl; }
 
-beforeEach(() => { from.mockReset(); sendEmail.mockClear(); });
+beforeEach(() => { from.mockReset(); sendEmail.mockClear(); autoRedeemConfiguredPairs.mockClear(); });
 
 const activePlan = {
   id: 'plan-1', shopify_product_id: 111, shopify_variant_id: 222,
@@ -225,5 +231,114 @@ describe('provisionMembershipFromOrder', () => {
     const res = await provisionMembershipFromOrder({ id: 'o-frame', shopify_order_id: 559, customer_id: 'c5', financial_status: 'paid' } as never, supabase as never);
     expect(res.provisioned).toBe(false);
     expect(auditInsert).not.toHaveBeenCalled();
+  });
+
+  // ---- Task 7: purchase-time configured pairs wired into provisioning ----
+
+  // Like happyMocks, but the membership line item carries an arbitrary
+  // pair_configs payload (raw DB jsonb) so the auto-redeem branch engages.
+  function happyMocksWithLineItem(
+    lineItem: Record<string, unknown>,
+    priorComms: Array<{ metadata: unknown; status: string }> = [],
+  ) {
+    const membershipInsert = vi.fn(() => ({ select: () => ({ maybeSingle: () => Promise.resolve({ data: { id: 'mem-1' }, error: null }) }) }));
+    const slotInsert = vi.fn(() => Promise.resolve({ error: null }));
+    const commsInsert = vi.fn(() => ({ select: () => ({ single: () => Promise.resolve({ data: { id: 'comm-1' }, error: null }) }) }));
+    const commsUpdate = vi.fn(() => ({ eq: () => Promise.resolve({ error: null }) }));
+    const auditInsert = vi.fn(() => Promise.resolve({ error: null }));
+    from.mockImplementation((t: string) => {
+      if (t === 'order_line_items') return { select: () => ({ eq: () => Promise.resolve({ data: [lineItem], error: null }) }) };
+      if (t === 'subscription_plans') return { select: () => ({ eq: () => Promise.resolve({ data: [activePlan], error: null }) }) };
+      if (t === 'subscription_memberships') return { insert: membershipInsert };
+      if (t === 'subscription_redemptions') return { insert: slotInsert };
+      if (t === 'customers') return { select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: { first_name: 'Dev', email: 'a@b.com' }, error: null }) }) }) };
+      if (t === 'communications') return { select: () => ({ eq: () => ({ eq: () => Promise.resolve({ data: priorComms, error: null }) }) }), insert: commsInsert, update: commsUpdate };
+      if (t === 'audit_log') return { insert: auditInsert };
+      return table({});
+    });
+    return { membershipInsert, slotInsert, commsInsert, commsUpdate, auditInsert };
+  }
+
+  it('auto-redeems configured pairs after provisioning and skips slot_unlocked when none remain', async () => {
+    const pairConfigs = [
+      { v: 100, h: 'aviator-a', l: 'non_rx', u: [], t: 'none' },
+      { v: 101, h: 'aviator-b', l: 'non_rx', u: [], t: 'none' },
+      { v: 102, h: 'aviator-c', l: 'non_rx', u: [], t: 'none' },
+    ];
+    autoRedeemConfiguredPairs.mockResolvedValueOnce({ redeemed: 3, fallbacks: 0 });
+    const shipTo = { country_code: 'US' };
+    const { commsInsert } = happyMocksWithLineItem({ variant_id: 222, product_id: 111, sku: 'SUB-3PAIR', pair_configs: pairConfigs });
+    const { provisionMembershipFromOrder } = await import('@/features/subscriptions/provision-membership');
+    const order = { id: 'o1', shopify_order_id: 555, customer_id: 'c1', customer_email: 'a@b.com', currency: 'usd', financial_status: 'paid', shipping_address: shipTo };
+    const res = await provisionMembershipFromOrder(order as never, supabase as never);
+    expect(res.provisioned).toBe(true);
+    expect(autoRedeemConfiguredPairs).toHaveBeenCalledTimes(1);
+    expect(autoRedeemConfiguredPairs).toHaveBeenCalledWith(
+      pairConfigs,
+      expect.objectContaining({ membershipId: 'mem-1', orderId: 'o1', shipTo }),
+      supabase,
+    );
+    const commTypes = commsInsert.mock.calls.map((c) => (c[0] as { type: string }).type);
+    expect(commTypes).toContain('membership_welcome');
+    expect(commTypes).not.toContain('slot_unlocked');
+  });
+
+  it('sends slot_unlocked when some pairs remain open (1 configured of 3)', async () => {
+    const pairConfigs = [{ v: 100, h: 'aviator-a', l: 'non_rx', u: [], t: 'none' }];
+    autoRedeemConfiguredPairs.mockResolvedValueOnce({ redeemed: 1, fallbacks: 0 });
+    const shipTo = { country_code: 'US' };
+    const { commsInsert } = happyMocksWithLineItem({ variant_id: 222, product_id: 111, sku: 'SUB-3PAIR', pair_configs: pairConfigs });
+    const { provisionMembershipFromOrder } = await import('@/features/subscriptions/provision-membership');
+    const order = { id: 'o1', shopify_order_id: 555, customer_id: 'c1', customer_email: 'a@b.com', currency: 'usd', financial_status: 'paid', shipping_address: shipTo };
+    const res = await provisionMembershipFromOrder(order as never, supabase as never);
+    expect(res.provisioned).toBe(true);
+    expect(autoRedeemConfiguredPairs).toHaveBeenCalledWith(
+      pairConfigs,
+      expect.objectContaining({ membershipId: 'mem-1', orderId: 'o1', shipTo }),
+      supabase,
+    );
+    const commTypes = commsInsert.mock.calls.map((c) => (c[0] as { type: string }).type);
+    expect(commTypes).toContain('slot_unlocked');
+  });
+
+  it('invalid pair_configs json in DB provisions membership with all slots open (fail-safe)', async () => {
+    const { slotInsert, auditInsert } = happyMocksWithLineItem({
+      variant_id: 222, product_id: 111, sku: 'SUB-3PAIR', pair_configs: [{ v: 'bad' }],
+    });
+    const { provisionMembershipFromOrder } = await import('@/features/subscriptions/provision-membership');
+    const order = { id: 'o1', shopify_order_id: 555, customer_id: 'c1', customer_email: 'a@b.com', currency: 'usd', financial_status: 'paid', shipping_address: { country_code: 'US' } };
+    const res = await provisionMembershipFromOrder(order as never, supabase as never);
+    expect(res.provisioned).toBe(true);
+    expect(autoRedeemConfiguredPairs).not.toHaveBeenCalled();
+    const slotCalls = slotInsert.mock.calls as unknown as unknown[][];
+    expect(slotCalls[0][0]).toHaveLength(3);
+    expect(auditInsert).toHaveBeenCalledWith(expect.objectContaining({ action: 'auto_redeem_configs_invalid' }));
+  });
+
+  it('duplicate delivery does not auto-redeem twice (idempotency short-circuit)', async () => {
+    const membershipInsert = vi.fn(() => ({ select: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: null }) }) }));
+    const slotInsert = vi.fn(() => Promise.resolve({ error: null }));
+    from.mockImplementation((t: string) => {
+      if (t === 'order_line_items') {
+        return {
+          select: () => ({
+            eq: () => Promise.resolve({
+              data: [{ variant_id: 222, product_id: 111, sku: 'SUB-3PAIR', pair_configs: [{ v: 100, h: 'aviator-a', l: 'non_rx', u: [], t: 'none' }] }],
+              error: null,
+            }),
+          }),
+        };
+      }
+      if (t === 'subscription_plans') return { select: () => ({ eq: () => Promise.resolve({ data: [activePlan], error: null }) }) };
+      if (t === 'subscription_memberships') return { insert: membershipInsert };
+      if (t === 'subscription_redemptions') return { insert: slotInsert };
+      return table({});
+    });
+    const { provisionMembershipFromOrder } = await import('@/features/subscriptions/provision-membership');
+    const order = { id: 'o1', shopify_order_id: 555, customer_id: 'c1', financial_status: 'paid', shipping_address: { country_code: 'US' } };
+    const res = await provisionMembershipFromOrder(order as never, supabase as never);
+    expect(res.provisioned).toBe(false);
+    expect(slotInsert).not.toHaveBeenCalled();
+    expect(autoRedeemConfiguredPairs).not.toHaveBeenCalled();
   });
 });

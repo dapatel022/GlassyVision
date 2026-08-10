@@ -2,6 +2,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { sendEmail } from '@/lib/email/resend';
 import { renderMembershipWelcome } from '@/lib/email/templates/membership-welcome';
 import { renderSlotUnlocked } from '@/lib/email/templates/slot-unlocked';
+import { validatePairConfigs } from '@/features/subscriptions/lib/pair-config';
+import { autoRedeemConfiguredPairs } from '@/features/subscriptions/auto-redeem-pairs';
 
 interface OrderRow {
   id: string;
@@ -10,6 +12,7 @@ interface OrderRow {
   customer_email?: string | null;
   currency?: string | null;
   financial_status: string;
+  shipping_address?: Record<string, unknown> | null;
 }
 
 interface RedemptionPolicy {
@@ -42,7 +45,7 @@ export async function provisionMembershipFromOrder(
 
   const { data: lineItems } = await supabase
     .from('order_line_items')
-    .select('variant_id, product_id, sku')
+    .select('variant_id, product_id, sku, pair_configs')
     .eq('order_id', order.id);
   const { data: plans } = await supabase
     .from('subscription_plans')
@@ -79,6 +82,10 @@ export async function provisionMembershipFromOrder(
   const termEnd = new Date();
   termEnd.setMonth(termEnd.getMonth() + plan.term_months);
 
+  // Settlement currency from the membership purchase — carried onto every
+  // redemption's synthesized fulfillment order so USD vs CAD is correct.
+  const membershipCurrency = (order.currency ?? 'usd').toLowerCase() === 'cad' ? 'cad' : 'usd';
+
   // Idempotent on shopify_order_id (unique). A duplicate delivery either returns
   // a unique-violation error (23505) or — if rewritten as ON CONFLICT DO NOTHING
   // — a null row; both mean "already provisioned", so do not mint slots again.
@@ -89,9 +96,7 @@ export async function provisionMembershipFromOrder(
       customer_id: order.customer_id,
       shopify_order_id: order.shopify_order_id,
       status: 'active',
-      // Settlement currency from the membership purchase — carried onto every
-      // redemption's synthesized fulfillment order so USD vs CAD is correct.
-      currency: (order.currency ?? 'usd').toLowerCase() === 'cad' ? 'cad' : 'usd',
+      currency: membershipCurrency,
       term_end: termEnd.toISOString(),
       pairs_total: plan.pairs_count,
       redemption_policy: plan.redemption_policy,
@@ -149,12 +154,45 @@ export async function provisionMembershipFromOrder(
   }));
   await supabase.from('subscription_redemptions').insert(slots);
 
+  // Purchase-time configured pairs: auto-redeem them through the existing
+  // redemption pipeline. Re-validate — DB jsonb is not trusted blindly.
+  let openSlots = plan.pairs_count;
+  const membershipLine = (lineItems ?? []).find((li) => (li.sku ?? '').startsWith('SUB-')) as
+    | { pair_configs?: unknown }
+    | undefined;
+  if (membershipLine?.pair_configs) {
+    const validated = validatePairConfigs(membershipLine.pair_configs, plan.pairs_count);
+    if (!validated.ok) {
+      await supabase.from('audit_log').insert({
+        user_id: null,
+        action: 'auto_redeem_configs_invalid',
+        entity_type: 'subscription_memberships',
+        entity_id: membership.id,
+        after_data: { order_id: order.id, reason: validated.error } as never,
+      });
+    } else if (validated.configs.length > 0) {
+      const { redeemed } = await autoRedeemConfiguredPairs(
+        validated.configs,
+        {
+          membershipId: membership.id,
+          orderId: order.id,
+          customerId: order.customer_id,
+          customerEmail: order.customer_email ?? null,
+          currency: membershipCurrency,
+          shipTo: order.shipping_address ?? null,
+        },
+        supabase,
+      );
+      openSlots = plan.pairs_count - redeemed;
+    }
+  }
+
   // Best-effort lifecycle emails. NEVER gate provisioning on a mail failure —
   // the membership + slots are already persisted. Each send is idempotent via a
   // prior-comm read keyed on (type, metadata.membership_id) so a webhook
   // re-delivery (orders/paid + orders/updated) does not double-send.
   try {
-    await sendProvisioningEmails(order, membership.id, plan.pairs_count, allImmediate, supabase);
+    await sendProvisioningEmails(order, membership.id, plan.pairs_count, allImmediate && openSlots > 0, supabase);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'unknown';
     console.error('[provision-membership] lifecycle email send failed (non-gating)', {
