@@ -65,4 +65,33 @@ describe('formatFallbackRow', () => {
       when: '—',
     });
   });
+
+  it('formats an auto_redeem_pair_anomaly row identically — same after_data shape, different reason vocabulary', () => {
+    // auto-redeem-pairs.ts writes anomalies (e.g. status_update_failed) with
+    // the exact same after_data fields as ordinary fallbacks — only the
+    // action string on the audit_log row differs, which this pure formatter
+    // never inspects. See src/app/admin/memberships/page.tsx for the two
+    // separately-queried, separately-labelled admin sections.
+    const row = formatFallbackRow({
+      entity_id: 'membership-789',
+      created_at: '2026-08-06T09:30:00.000Z',
+      after_data: {
+        order_id: 'order-2',
+        pair_index: 1,
+        frame_variant_id: 501,
+        handle: 'dusk-wayfarer',
+        reason: 'status_update_failed',
+        slot_id: 's1',
+        synthesized_order_id: 'ro1',
+      },
+    });
+
+    expect(row).toEqual({
+      membershipId: 'membership-789',
+      pairIndex: '1',
+      handle: 'dusk-wayfarer',
+      reason: 'status_update_failed',
+      when: new Date('2026-08-06T09:30:00.000Z').toLocaleDateString(),
+    });
+  });
 });

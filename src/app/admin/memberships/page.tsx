@@ -1,8 +1,9 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { getCurrentUser, isAdminRole } from '@/lib/auth/middleware';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { formatFallbackRow } from '@/features/admin/lib/pair-fallbacks';
+import { formatFallbackRow, type FormattedFallbackRow } from '@/features/admin/lib/pair-fallbacks';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,6 +11,69 @@ const STATUS_FILTERS = ['all', 'active', 'grace', 'disputed', 'frozen', 'expired
 
 function thirtyDaysFromNow(): string {
   return new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+}
+
+/**
+ * `auto_redeem_pair_failed` (ordinary "frame sold out, pick another"
+ * fallbacks) and `auto_redeem_pair_anomaly` (stuck-slot / data-integrity
+ * incidents — see auto-redeem-pairs.ts's auditAnomaly) are written with
+ * distinct action strings on purpose: they need different admin responses
+ * (refund/credit vs. data-integrity triage), so they're never queried
+ * together. `entity_type` is filtered too as defense-in-depth against a
+ * future reuse of a similarly-named action from another entity.
+ */
+async function getPairAuditRows(
+  supabase: SupabaseClient,
+  action: 'auto_redeem_pair_failed' | 'auto_redeem_pair_anomaly',
+): Promise<Array<{ id: string } & FormattedFallbackRow>> {
+  const { data } = await supabase
+    .from('audit_log')
+    .select('id, entity_id, created_at, after_data')
+    .eq('action', action)
+    .eq('entity_type', 'subscription_memberships')
+    .order('created_at', { ascending: false })
+    .limit(20);
+  return (data ?? []).map((row) => ({ id: row.id, ...formatFallbackRow(row) }));
+}
+
+/** Shared table for both pair-audit queues — only the heading/rows/empty
+ * copy differ between the ordinary-fallback and anomaly sections. */
+function PairAuditTable({ rows, emptyMessage }: { rows: Array<{ id: string } & FormattedFallbackRow>; emptyMessage: string }) {
+  if (rows.length === 0) return <p className="text-muted">{emptyMessage}</p>;
+  return (
+    <div className="overflow-x-auto bg-white border border-line rounded-lg">
+      <table className="w-full text-sm">
+        <thead className="bg-base-deeper text-xs font-mono uppercase tracking-wider text-muted-soft">
+          <tr>
+            <th className="text-left px-4 py-3">Membership</th>
+            <th className="text-right px-4 py-3">Pair</th>
+            <th className="text-left px-4 py-3">Frame</th>
+            <th className="text-left px-4 py-3">Reason</th>
+            <th className="text-left px-4 py-3">When</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.id} className="border-t border-line">
+              <td className="px-4 py-3 font-mono">
+                {row.membershipId === '—' ? (
+                  row.membershipId
+                ) : (
+                  <Link href={`/admin/memberships/${row.membershipId}`} className="text-accent hover:underline">
+                    {row.membershipId.slice(0, 8)}…
+                  </Link>
+                )}
+              </td>
+              <td className="px-4 py-3 text-right tabular-nums">{row.pairIndex}</td>
+              <td className="px-4 py-3 font-mono">{row.handle}</td>
+              <td className="px-4 py-3">{row.reason}</td>
+              <td className="px-4 py-3 text-muted">{row.when}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 interface PageProps {
@@ -40,13 +104,8 @@ export default async function MembershipsAdminPage({ searchParams }: PageProps) 
 
   const { data: memberships } = await query;
 
-  const { data: pairFallbackRows } = await supabase
-    .from('audit_log')
-    .select('id, entity_id, created_at, after_data')
-    .eq('action', 'auto_redeem_pair_failed')
-    .order('created_at', { ascending: false })
-    .limit(20);
-  const pairFallbacks = (pairFallbackRows ?? []).map((row) => ({ id: row.id, ...formatFallbackRow(row) }));
+  const pairFallbacks = await getPairAuditRows(supabase, 'auto_redeem_pair_failed');
+  const pairAnomalies = await getPairAuditRows(supabase, 'auto_redeem_pair_anomaly');
 
   return (
     <div className="space-y-6">
@@ -61,42 +120,14 @@ export default async function MembershipsAdminPage({ searchParams }: PageProps) 
         <h2 className="font-mono text-xs uppercase tracking-widest text-muted-soft">
           Pair fallbacks needing attention
         </h2>
-        {pairFallbacks.length === 0 ? (
-          <p className="text-muted">None — all configured pairs provisioned cleanly.</p>
-        ) : (
-          <div className="overflow-x-auto bg-white border border-line rounded-lg">
-            <table className="w-full text-sm">
-              <thead className="bg-base-deeper text-xs font-mono uppercase tracking-wider text-muted-soft">
-                <tr>
-                  <th className="text-left px-4 py-3">Membership</th>
-                  <th className="text-right px-4 py-3">Pair</th>
-                  <th className="text-left px-4 py-3">Frame</th>
-                  <th className="text-left px-4 py-3">Reason</th>
-                  <th className="text-left px-4 py-3">When</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pairFallbacks.map((row) => (
-                  <tr key={row.id} className="border-t border-line">
-                    <td className="px-4 py-3 font-mono">
-                      {row.membershipId === '—' ? (
-                        row.membershipId
-                      ) : (
-                        <Link href={`/admin/memberships/${row.membershipId}`} className="text-accent hover:underline">
-                          {row.membershipId.slice(0, 8)}…
-                        </Link>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums">{row.pairIndex}</td>
-                    <td className="px-4 py-3 font-mono">{row.handle}</td>
-                    <td className="px-4 py-3">{row.reason}</td>
-                    <td className="px-4 py-3 text-muted">{row.when}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <PairAuditTable rows={pairFallbacks} emptyMessage="None — all configured pairs provisioned cleanly." />
+      </section>
+
+      <section className="space-y-2">
+        <h2 className="font-mono text-xs uppercase tracking-widest text-muted-soft">
+          Slot anomalies needing data-integrity check
+        </h2>
+        <PairAuditTable rows={pairAnomalies} emptyMessage="None." />
       </section>
 
       <div className="flex flex-wrap items-center gap-2">

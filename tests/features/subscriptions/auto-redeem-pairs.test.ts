@@ -282,6 +282,10 @@ describe('autoRedeemConfiguredPairs', () => {
     expect(state.audits).toHaveLength(1);
     expect(reason(state.audits[0])).toBe('status_update_failed');
     expect(state.audits[0].after_data).toMatchObject({ slot_id: 's1', synthesized_order_id: 'ro1' });
+    // Anomalies (stuck slot + live PII, needs data-integrity triage) must NOT
+    // share the ordinary-fallback action — a different admin queue depends
+    // on this distinction (src/features/admin/lib/pair-fallbacks.ts).
+    expect(state.audits[0]).toMatchObject({ action: 'auto_redeem_pair_anomaly' });
   });
 
   it('I4: a failing revert write (after out-of-stock) is separately audited as status_update_failed', async () => {
@@ -291,6 +295,18 @@ describe('autoRedeemConfiguredPairs', () => {
     const result = await autoRedeemConfiguredPairs([RX_PAIR], CTX, stubSupabase() as never);
     expect(result).toEqual({ redeemed: 0, fallbacks: 1 });
     expect(state.audits.map(reason)).toEqual(['status_update_failed', 'out_of_stock']);
+  });
+
+  it('anomaly rows and fallback rows are written with distinct, non-overlapping audit actions', async () => {
+    state.reserveFailsFor = [501];
+    state.revertFailFor = ['s1'];
+    const { autoRedeemConfiguredPairs } = await import('@/features/subscriptions/auto-redeem-pairs');
+    await autoRedeemConfiguredPairs([RX_PAIR], CTX, stubSupabase() as never);
+    // [0] = revert-write anomaly (status_update_failed), [1] = the ordinary
+    // out_of_stock fallback for the same pair.
+    expect(state.audits[0].action).toBe('auto_redeem_pair_anomaly');
+    expect(state.audits[1].action).toBe('auto_redeem_pair_failed');
+    expect(state.audits[0].action).not.toBe(state.audits[1].action);
   });
 
   it('I5: a slot-select DB error is captured into the no_available_slot audit reason', async () => {

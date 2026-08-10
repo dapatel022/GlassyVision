@@ -43,8 +43,12 @@ export async function autoRedeemConfiguredPairs(
   let fallbacks = 0;
 
   // Raw audit_log insert. Failure is logged, never thrown — an audit write
-  // failing must not itself break the batch.
+  // failing must not itself break the batch. `action` is parameterised so
+  // callers can distinguish a true fallback from a data-integrity anomaly —
+  // conflating them would surface a stuck-slot-with-live-PII incident in the
+  // same admin queue as an ordinary "frame sold out, pick another" fallback.
   const insertAudit = async (
+    action: 'auto_redeem_pair_failed' | 'auto_redeem_pair_anomaly',
     pairIndex: number,
     config: PairConfig,
     reason: string,
@@ -52,7 +56,7 @@ export async function autoRedeemConfiguredPairs(
   ): Promise<void> => {
     const { error } = await supabase.from('audit_log').insert({
       user_id: null,
-      action: 'auto_redeem_pair_failed',
+      action,
       entity_type: 'subscription_memberships',
       entity_id: ctx.membershipId,
       after_data: {
@@ -76,20 +80,23 @@ export async function autoRedeemConfiguredPairs(
     extra?: Record<string, unknown>,
   ): Promise<void> => {
     fallbacks += 1;
-    return insertAudit(pairIndex, config, reason, extra);
+    return insertAudit('auto_redeem_pair_failed', pairIndex, config, reason, extra);
   };
 
   // An anomaly that is NOT a normal "picked a new frame" fallback — e.g. a DB
   // write that failed after the pair's outcome was already decided, leaving
-  // the slot stuck in an unexpected state. Logged loudly for manual triage,
-  // but does not change the reported counts or trigger the fallback email
-  // (the slot is not actually back to `available`, so that copy would lie).
+  // the slot stuck in an unexpected state. Its own action string
+  // (`auto_redeem_pair_anomaly`) keeps it out of the ordinary-fallback admin
+  // queue — it needs data-integrity triage, not a refund/credit decision.
+  // Logged loudly for manual triage, but does not change the reported counts
+  // or trigger the fallback email (the slot is not actually back to
+  // `available`, so that copy would lie).
   const auditAnomaly = (
     pairIndex: number,
     config: PairConfig,
     reason: string,
     extra?: Record<string, unknown>,
-  ): Promise<void> => insertAudit(pairIndex, config, reason, extra);
+  ): Promise<void> => insertAudit('auto_redeem_pair_anomaly', pairIndex, config, reason, extra);
 
   // Revert a claimed slot to `available`, clearing all per-pick config so no
   // stale prescription/ship-to PII remains — mirrors startRedemption's revert
