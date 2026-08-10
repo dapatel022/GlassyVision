@@ -6,6 +6,7 @@ import type { MembershipTierPrice } from '@/lib/commerce/membership-pricing';
 import type { PairConfig } from '@/features/subscriptions/lib/pair-config';
 import { BuilderProvider, useBuilder } from './BuilderContext';
 import type { Tier, TierPairsMap } from './builder-state';
+import PairConfigurator from './PairConfigurator';
 
 /**
  * Client shell for the plan-builder route. Carries no business logic of its
@@ -43,7 +44,7 @@ export default function PlanBuilder({ data, initialTier }: { data: BuilderData; 
 }
 
 function PlanBuilderShell({ data, initialTier }: { data: BuilderData; initialTier: Tier | null }) {
-  const { state, hydrated, setTier, clearPair } = useBuilder();
+  const { state, hydrated, setTier, setPair, clearPair } = useBuilder();
   const [activePairIndex, setActivePairIndex] = useState<number | null>(null);
 
   // Seed the tier from the `?tier=` query param once hydration settles —
@@ -103,12 +104,18 @@ function PlanBuilderShell({ data, initialTier }: { data: BuilderData; initialTie
 
           {activePairIndex !== null && (
             <div className="mt-6 border border-line p-6">
-              {/*
-                Task 10 slot: <PairConfigurator/> renders here, scoped to
-                state.pairs[activePairIndex] (frame/lens/tint picks for pair
-                #{activePairIndex + 1}). Left empty deliberately — do not
-                invent its internals ahead of that task.
-              */}
+              <PairConfigurator
+                key={activePairIndex}
+                frames={data.frames}
+                lensPricing={data.lensPricing}
+                surcharge={data.surcharge}
+                value={state.pairs[activePairIndex]}
+                onDone={(config) => {
+                  setPair(activePairIndex, config);
+                  setActivePairIndex(null);
+                }}
+                onCancel={() => setActivePairIndex(null)}
+              />
             </div>
           )}
         </section>
