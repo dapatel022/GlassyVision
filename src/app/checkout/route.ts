@@ -48,6 +48,11 @@ export async function POST(request: NextRequest) {
         { key: 'line_ref', value: lineRef },
       ],
     });
+    // Captured immediately so the pair-config branch below always mints
+    // _pair_N onto THIS line, even if the lens-upgrade loop right after
+    // pushes add-on lines in between (cartLines.length - 1 would then point
+    // at an add-on line, not the membership base line).
+    const baseCartLine = cartLines[cartLines.length - 1];
 
     for (const optionId of selectedOptionIds(l.lensConfig)) {
       const upgrade = pricing?.[optionId];
@@ -70,9 +75,17 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    if (l.pairConfigs !== undefined) {
+    // Empty array behaves exactly like "no pair configs" — no attributes,
+    // no charge lines, no DB round-trip.
+    if (l.pairConfigs && l.pairConfigs.length > 0) {
       if (l.productHandle !== 'membership') {
         return NextResponse.json({ error: 'Pair configurations are only valid on a membership line' }, { status: 409 });
+      }
+      if (l.quantity !== 1) {
+        // Charge lines below are minted once per pair (quantity 1 each); a
+        // membership line quantity > 1 would multiply the base line without
+        // multiplying the pair charges — undercharge.
+        return NextResponse.json({ error: 'Configured membership lines must be purchased at quantity 1' }, { status: 409 });
       }
       const tiers = await getMembershipPricing();
       const tier = tiers?.find((t) => t.variantId === l.variantId);
@@ -86,30 +99,52 @@ export async function POST(request: NextRequest) {
       }
       const configs = validated.configs;
 
-      // Premium lookup: which chosen frames carry the surcharge.
+      // Eligibility + premium lookup: every chosen frame must carry a
+      // product_metadata row with subscription_tier 'included' or 'premium'
+      // (same gate the redeem page enforces) — anything else (no row, or a
+      // tier like 'excluded') must never be provisioned for free. FAIL
+      // CLOSED on a DB error too: a null `data` from a failed query must
+      // never be read as "no premium frames".
       const supabase = createAdminClient();
-      const { data: premiumRows } = await supabase
+      const { data: metaRows, error: metaError } = await supabase
         .from('product_metadata')
         .select('shopify_variant_id, subscription_tier')
         .in('shopify_variant_id', configs.map((c) => c.v));
-      const premiumSet = new Set(
-        ((premiumRows ?? []) as Array<{ shopify_variant_id: number; subscription_tier: string | null }>)
-          .filter((r) => r.subscription_tier === 'premium')
-          .map((r) => r.shopify_variant_id),
+      if (metaError) {
+        console.error('[checkout] product_metadata lookup failed — blocking configured purchase', metaError);
+        return NextResponse.json({ error: 'Membership frame eligibility is unavailable — please try again shortly' }, { status: 409 });
+      }
+      const tierByVariant = new Map(
+        ((metaRows ?? []) as Array<{ shopify_variant_id: number; subscription_tier: string | null }>)
+          .map((r) => [r.shopify_variant_id, r.subscription_tier]),
       );
+      const ineligible = configs.some((c) => {
+        const t = tierByVariant.get(c.v);
+        return t !== 'included' && t !== 'premium';
+      });
+      if (ineligible) {
+        return NextResponse.json({ error: "That frame isn't available in a membership plan" }, { status: 409 });
+      }
+      const premiumSet = new Set(configs.filter((c) => tierByVariant.get(c.v) === 'premium').map((c) => c.v));
       const surcharge = premiumSet.size > 0 ? await getFrameSurchargePricing() : null;
       if (premiumSet.size > 0 && !surcharge) {
         console.error('[checkout] premium surcharge pricing unavailable — blocking configured purchase');
         return NextResponse.json({ error: 'Premium frame pricing is unavailable — please try again shortly' }, { status: 409 });
       }
 
-      // Mint _pair_N attributes onto the membership line just pushed.
-      const membershipCartLine = cartLines[cartLines.length - 1];
-      membershipCartLine.attributes.push(...encodePairAttributes(configs));
+      // Mint _pair_N attributes onto the membership base line (captured
+      // above — never re-derived from cartLines.length - 1).
+      baseCartLine.attributes.push(...encodePairAttributes(configs));
 
       // Charge lines: LENSUP per chargeable option, SURCH per premium pair.
+      // _pair_index (1-based, matching _pair_N) is stamped onto every line
+      // minted here so that two pairs choosing the same option never
+      // produce byte-identical lines — Shopify may otherwise merge
+      // identical cart lines into one, silently undercharging.
       const pairPricing = await getLensUpgradePricing();
-      for (const config of configs) {
+      for (let i = 0; i < configs.length; i++) {
+        const config = configs[i];
+        const pairIndexAttr = { key: '_pair_index', value: String(i + 1) };
         for (const optionId of chargeableOptionIds(config)) {
           const upgrade = pairPricing?.[optionId];
           if (!upgrade) {
@@ -119,14 +154,14 @@ export async function POST(request: NextRequest) {
           cartLines.push({
             merchandiseId: upgrade.variantId,
             quantity: 1,
-            attributes: [{ key: '_addon_for', value: lineRef }, { key: 'is_rx_required', value: 'false' }],
+            attributes: [{ key: '_addon_for', value: lineRef }, { key: 'is_rx_required', value: 'false' }, pairIndexAttr],
           });
         }
         if (premiumSet.has(config.v)) {
           cartLines.push({
             merchandiseId: surcharge!.variantId,
             quantity: 1,
-            attributes: [{ key: '_addon_for', value: lineRef }, { key: 'is_rx_required', value: 'false' }],
+            attributes: [{ key: '_addon_for', value: lineRef }, { key: 'is_rx_required', value: 'false' }, pairIndexAttr],
           });
         }
       }
