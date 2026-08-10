@@ -7,13 +7,15 @@ import type { PairConfig } from '@/features/subscriptions/lib/pair-config';
  * useReducer + persistence).
  */
 
+export type Tier = 'solo' | 'duo' | 'trio';
+
 export interface BuilderState {
-  tier: 'solo' | 'duo' | 'trio' | null;
+  tier: Tier | null;
   pairs: Array<PairConfig | null>;
 }
 
 export type BuilderAction =
-  | { type: 'setTier'; tier: 'solo' | 'duo' | 'trio'; pairs: number }
+  | { type: 'setTier'; tier: Tier; pairs: number }
   | { type: 'setPair'; index: number; config: PairConfig }
   | { type: 'clearPair'; index: number }
   | { type: 'reset' };
@@ -49,4 +51,34 @@ export function builderReducer(state: BuilderState, action: BuilderAction): Buil
     default:
       return state;
   }
+}
+
+/** Live tier → pair-count entitlement, e.g. `{ solo: 1, duo: 2, trio: 3 }` from `data.tiers`. */
+export type TierPairsMap = Partial<Record<Tier, number>>;
+
+/**
+ * Reconciles a stored (shape-validated but otherwise untrusted) builder
+ * state — e.g. a hand-edited `gv_builder_v1` localStorage entry — against
+ * the live tier→pairs entitlement. Pure and free of localStorage/React so
+ * BuilderContext's hydration path stays unit-testable.
+ *
+ * Two independent trust boundaries, both fail closed to
+ * INITIAL_BUILDER_STATE:
+ *  - `stored.tier` must be a tier that's actually live in `tierPairs` —
+ *    a stale/unknown tier string is never trusted.
+ *  - the REAL pair count for that tier (from `tierPairs`) is authoritative,
+ *    never `stored.pairs.length` — an oversized stored array (e.g. a
+ *    "solo" plan hand-edited to carry 5 pairs) is clamped to the tier's
+ *    actual entitlement, dropping the excess (prefix kept). A short array
+ *    is padded with nulls, mirroring builderReducer's own resize semantics.
+ */
+export function reconcileHydratedState(stored: BuilderState | null, tierPairs: TierPairsMap | undefined): BuilderState {
+  if (!stored || !stored.tier) return INITIAL_BUILDER_STATE;
+  const realPairs = tierPairs?.[stored.tier];
+  if (typeof realPairs !== 'number') return INITIAL_BUILDER_STATE;
+  const pairs: Array<PairConfig | null> = [];
+  for (let i = 0; i < realPairs; i++) {
+    pairs.push(i < stored.pairs.length ? stored.pairs[i] : null);
+  }
+  return { tier: stored.tier, pairs };
 }

@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
   builderReducer,
+  reconcileHydratedState,
   INITIAL_BUILDER_STATE,
   type BuilderState,
+  type TierPairsMap,
 } from '@/features/subscriptions/builder/builder-state';
 import type { PairConfig } from '@/features/subscriptions/lib/pair-config';
 
@@ -44,5 +46,39 @@ describe('builderReducer', () => {
     const dirty: BuilderState = { tier: 'trio', pairs: [CFG_1, CFG_2, null] };
     const next = builderReducer(dirty, { type: 'reset' });
     expect(next).toEqual(INITIAL_BUILDER_STATE);
+  });
+});
+
+describe('reconcileHydratedState', () => {
+  const LIVE_TIER_PAIRS: TierPairsMap = { solo: 1, duo: 2, trio: 3 };
+
+  it('clamps a stored solo plan carrying 5 well-formed pairs down to exactly 1 pair', () => {
+    const tampered: BuilderState = { tier: 'solo', pairs: [CFG_1, CFG_2, CFG_1, CFG_2, CFG_1] };
+    const next = reconcileHydratedState(tampered, LIVE_TIER_PAIRS);
+    expect(next.tier).toBe('solo');
+    expect(next.pairs).toEqual([CFG_1]);
+  });
+
+  it('falls back to the initial state when the stored tier is not present in live tiers', () => {
+    const stored: BuilderState = { tier: 'duo', pairs: [CFG_1, CFG_2] };
+    const next = reconcileHydratedState(stored, { solo: 1, trio: 3 }); // duo missing
+    expect(next).toEqual(INITIAL_BUILDER_STATE);
+  });
+
+  it('pads a stored pairs array shorter than the tier count with nulls', () => {
+    const stored: BuilderState = { tier: 'trio', pairs: [CFG_1] };
+    const next = reconcileHydratedState(stored, LIVE_TIER_PAIRS);
+    expect(next.tier).toBe('trio');
+    expect(next.pairs).toEqual([CFG_1, null, null]);
+  });
+
+  it('falls back to the initial state for a null stored state or a null stored tier', () => {
+    expect(reconcileHydratedState(null, LIVE_TIER_PAIRS)).toEqual(INITIAL_BUILDER_STATE);
+    expect(reconcileHydratedState({ tier: null, pairs: [] }, LIVE_TIER_PAIRS)).toEqual(INITIAL_BUILDER_STATE);
+  });
+
+  it('falls back to the initial state when no live tiers are known at all', () => {
+    const stored: BuilderState = { tier: 'solo', pairs: [CFG_1] };
+    expect(reconcileHydratedState(stored, undefined)).toEqual(INITIAL_BUILDER_STATE);
   });
 });

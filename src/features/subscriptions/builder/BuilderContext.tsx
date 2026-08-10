@@ -4,7 +4,10 @@ import { createContext, useContext, useEffect, useReducer, useState, useCallback
 import {
   builderReducer,
   INITIAL_BUILDER_STATE,
+  reconcileHydratedState,
   type BuilderState,
+  type Tier,
+  type TierPairsMap,
 } from './builder-state';
 import { parsePairProperty, type PairConfig } from '@/features/subscriptions/lib/pair-config';
 
@@ -13,7 +16,7 @@ const STORAGE_KEY = 'gv_builder_v1';
 interface BuilderContextValue {
   state: BuilderState;
   hydrated: boolean;
-  setTier: (tier: 'solo' | 'duo' | 'trio', pairs: number) => void;
+  setTier: (tier: Tier, pairs: number) => void;
   setPair: (index: number, config: PairConfig) => void;
   clearPair: (index: number) => void;
   reset: () => void;
@@ -62,7 +65,14 @@ function parseStoredBuilderState(raw: string): BuilderState | null {
   return { tier, pairs };
 }
 
-export function BuilderProvider({ children }: { children: React.ReactNode }) {
+/**
+ * `tierPairs` is the live tier→pair-count entitlement (derived from
+ * `data.tiers` by the caller, e.g. PlanBuilder). It's the authority
+ * hydration reconciles stored state against — see reconcileHydratedState.
+ * Omitting it (tiers unavailable) means no stored tier is trusted, which
+ * is the correct fail-closed behavior when live pricing itself is down.
+ */
+export function BuilderProvider({ children, tierPairs }: { children: React.ReactNode; tierPairs?: TierPairsMap }) {
   const [state, dispatch] = useReducer(builderReducer, INITIAL_BUILDER_STATE);
   const [hydrated, setHydrated] = useState(false);
 
@@ -74,14 +84,17 @@ export function BuilderProvider({ children }: { children: React.ReactNode }) {
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const stored = parseStoredBuilderState(raw);
-        // Only tier-shaped state stores anything worth restoring — an
-        // untiered state is already what INITIAL_BUILDER_STATE gives us.
-        // setTier first so pairs is sized correctly, THEN replay configured
-        // pairs (each dispatch chains off the reducer's pending state, so
-        // ordering here is safe within a single effect).
-        if (stored && stored.tier) {
-          dispatch({ type: 'setTier', tier: stored.tier, pairs: stored.pairs.length });
-          stored.pairs.forEach((config, i) => {
+        // reconcileHydratedState is the single source of truth for what's
+        // trustworthy: an unknown/stale tier, or a stored pairs array whose
+        // length doesn't match the tier's REAL entitlement, both fail
+        // closed / get clamped there — never trust stored.pairs.length
+        // directly. setTier first so pairs is sized correctly, THEN replay
+        // configured pairs (each dispatch chains off the reducer's pending
+        // state, so ordering here is safe within a single effect).
+        const reconciled = reconcileHydratedState(stored, tierPairs);
+        if (reconciled.tier) {
+          dispatch({ type: 'setTier', tier: reconciled.tier, pairs: reconciled.pairs.length });
+          reconciled.pairs.forEach((config, i) => {
             if (config) dispatch({ type: 'setPair', index: i, config });
           });
         }
@@ -89,8 +102,8 @@ export function BuilderProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // malformed stored JSON — start fresh
     }
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setHydrated(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -102,7 +115,7 @@ export function BuilderProvider({ children }: { children: React.ReactNode }) {
     }
   }, [state, hydrated]);
 
-  const setTier = useCallback((tier: 'solo' | 'duo' | 'trio', pairs: number) => {
+  const setTier = useCallback((tier: Tier, pairs: number) => {
     dispatch({ type: 'setTier', tier, pairs });
   }, []);
 

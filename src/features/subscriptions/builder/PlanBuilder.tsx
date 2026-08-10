@@ -5,6 +5,7 @@ import type { BuilderData } from '@/features/subscriptions/lib/builder-data';
 import type { MembershipTierPrice } from '@/lib/commerce/membership-pricing';
 import type { PairConfig } from '@/features/subscriptions/lib/pair-config';
 import { BuilderProvider, useBuilder } from './BuilderContext';
+import type { Tier, TierPairsMap } from './builder-state';
 
 /**
  * Client shell for the plan-builder route. Carries no business logic of its
@@ -13,8 +14,6 @@ import { BuilderProvider, useBuilder } from './BuilderContext';
  * builderReducer. Tasks 10 (pair configurator) and 11 (review/checkout)
  * fill in the marked placeholder slots.
  */
-
-type Tier = 'solo' | 'duo' | 'trio';
 
 const TIER_LABELS: Record<Tier, string> = { solo: 'Solo', duo: 'Duo', trio: 'Trio' };
 
@@ -25,8 +24,19 @@ const STEPS: Array<{ key: 'plan' | 'pairs' | 'review'; label: string }> = [
 ];
 
 export default function PlanBuilder({ data, initialTier }: { data: BuilderData; initialTier: Tier | null }) {
+  // The live tier→pairs entitlement BuilderProvider reconciles hydrated
+  // localStorage state against — see reconcileHydratedState. `undefined`
+  // when tiers are unavailable, which correctly means "trust no stored
+  // tier" (fail closed matches the rest of this page's tiers===null path).
+  const tierPairs: TierPairsMap | undefined = data.tiers
+    ? data.tiers.reduce<TierPairsMap>((acc, t) => {
+        acc[t.tier] = t.pairs;
+        return acc;
+      }, {})
+    : undefined;
+
   return (
-    <BuilderProvider>
+    <BuilderProvider tierPairs={tierPairs}>
       <PlanBuilderShell data={data} initialTier={initialTier} />
     </BuilderProvider>
   );
@@ -84,7 +94,7 @@ function PlanBuilderShell({ data, initialTier }: { data: BuilderData; initialTie
                 isActive={activePairIndex === i}
                 onConfigure={() => setActivePairIndex(i)}
                 onDecideLater={() => {
-                  clearPair(i);
+                  if (pair !== null) clearPair(i);
                   setActivePairIndex((current) => (current === i ? null : current));
                 }}
               />
