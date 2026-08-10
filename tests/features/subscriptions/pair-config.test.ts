@@ -63,6 +63,9 @@ describe('validatePairConfigs', () => {
     expect(validatePairConfigs('nope', 3).ok).toBe(false);
     expect(validatePairConfigs(null, 3).ok).toBe(false);
   });
+  it('rejects duplicate upgrade ids', () => {
+    expect(validatePairConfigs([{ ...PLANO_PAIR, u: ['ar', 'ar'] }], 3).ok).toBe(false);
+  });
 });
 
 describe('chargeableOptionIds', () => {
