@@ -117,16 +117,25 @@ export async function autoRedeemConfiguredPairs(
 
   // Release a reserved unit back to the pool. Mirrors sweepAbandonedRedemptions
   // / releaseReservedSlots / handle-refund's convention exactly: same RPC, same
-  // `subscription_release` adjustment reason. Best-effort — logged, never
-  // thrown; the pair is already being failed regardless of this outcome.
+  // `subscription_release` adjustment reason. Self-contained: `release_inventory_unit`
+  // is a blind `pool_quantity + 1` (00032_inventory_atomic.sql), so a caller
+  // that retries after a lost response would over-credit the pool with a
+  // phantom unit. Wrapping the RPC call itself in try/catch guarantees this
+  // function NEVER throws — callers must still set `reserved = false` BEFORE
+  // awaiting it (not after) so a throw mid-call can't be misread as "still
+  // reserved" and trigger a second release.
   const releaseReservation = async (variantId: number, slotId: string, note: string): Promise<void> => {
-    const { error } = await supabase.rpc('release_inventory_unit', {
-      p_variant_id: variantId,
-      p_reason: 'subscription_release',
-      p_redemption_id: slotId,
-      p_notes: note,
-    });
-    if (error) console.error('[auto-redeem] inventory release failed', error);
+    try {
+      const { error } = await supabase.rpc('release_inventory_unit', {
+        p_variant_id: variantId,
+        p_reason: 'subscription_release',
+        p_redemption_id: slotId,
+        p_notes: note,
+      });
+      if (error) console.error('[auto-redeem] inventory release failed', error);
+    } catch (err) {
+      console.error('[auto-redeem] inventory release threw', err);
+    }
   };
 
   // Destination gate up front: Rx/eyewear dispensing is US/CA only. A bad
@@ -164,12 +173,21 @@ export async function autoRedeemConfiguredPairs(
 
       // 2. Frame metadata: the premium flag (record-keeping only — the
       // surcharge was already paid at checkout) AND Rx-capability, which
-      // gates the compliance check right below.
-      const { data: meta } = await supabase
+      // gates the compliance check right below. This read is now
+      // compliance-load-bearing (its failure mode feeds the Rx gate), so a
+      // transient DB error must be its own honest reason — NOT silently
+      // treated as "not Rx-capable" (which would wrongly fail every Rx pair
+      // with a misleading `frame_not_rx_capable` and tell the customer their
+      // fine frame sold out).
+      const { data: meta, error: metaErr } = await supabase
         .from('product_metadata')
         .select('subscription_tier, is_rx_capable')
         .eq('shopify_variant_id', config.v)
         .maybeSingle();
+      if (metaErr) {
+        await auditFallback(pairIndex, config, `frame_metadata_unavailable: ${metaErr.message}`);
+        continue;
+      }
       const metaRow = meta as { subscription_tier?: string | null; is_rx_capable?: boolean | null } | null;
       const isPremium = metaRow?.subscription_tier === 'premium';
       const isRxCapable = metaRow?.is_rx_capable === true;
@@ -252,12 +270,12 @@ export async function autoRedeemConfiguredPairs(
       // in place (harmless, zero-dollar, never pushed to Shopify) and its id
       // is recorded so it's traceable, not an orphan.
       if (config.l !== 'non_rx' && !hasRxItems) {
+        reserved = false;
         await releaseReservation(
           config.v,
           slot.id,
           `Released after rx_routing_mismatch guard (membership ${ctx.membershipId})`,
         );
-        reserved = false;
         await revertSlot(slot.id, pairIndex, config);
         claimedSlotId = null;
         await auditFallback(pairIndex, config, 'rx_routing_mismatch', { synthesized_order_id: orderId });
@@ -295,9 +313,11 @@ export async function autoRedeemConfiguredPairs(
       // skipping it here would leak a unit of stock permanently.
       try {
         if (reserved && claimedSlotId) {
+          const slotIdToRelease = claimedSlotId;
+          reserved = false;
           await releaseReservation(
             config.v,
-            claimedSlotId,
+            slotIdToRelease,
             `Released after auto-redeem pair failure (membership ${ctx.membershipId})`,
           );
         }

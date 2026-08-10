@@ -22,13 +22,16 @@ interface StubState {
   slots: Slot[];
   premiumVariantIds: number[];
   notRxCapableVariantIds: number[];       // C2: variants with is_rx_capable=false
+  metadataErrorFor: number[];             // N2: variants whose product_metadata query errors
   reserveFailsFor: number[];              // frame variant ids whose reservation fails
+  releaseRejects: boolean;                // N1: release_inventory_unit rpc rejects instead of resolving
   selectError: DbError | null;            // error on the slot-select query
   claimError: DbError | null;             // error on the claim update
   revertFailFor: string[];                // slot ids whose revert-to-available write errors
   statusUpdateFailFor: string[];          // slot ids whose post-order status write errors
   auditShouldFail: boolean;               // audit_log.insert errors
   commsInsertShouldFail: boolean;         // communications.insert errors (e.g. missing enum value)
+  priorFallbackComms: Array<{ metadata: unknown; status: string }>; // existing pair_fallback rows (dedupe)
   audits: Array<Record<string, unknown>>;
   slotUpdates: Array<{ id: string; patch: Record<string, unknown> }>;
   releaseCalls: Array<{ p_variant_id: number; p_redemption_id?: string; p_reason?: string }>;
@@ -104,13 +107,15 @@ function stubSupabase() {
         return {
           select: () => ({
             eq: (_c: string, v: number) => ({
-              maybeSingle: () => Promise.resolve({
-                data: {
-                  subscription_tier: state.premiumVariantIds.includes(v) ? 'premium' : null,
-                  is_rx_capable: !state.notRxCapableVariantIds.includes(v),
-                },
-                error: null,
-              }),
+              maybeSingle: () => state.metadataErrorFor.includes(v)
+                ? Promise.resolve({ data: null, error: { message: 'metadata query timed out' } })
+                : Promise.resolve({
+                    data: {
+                      subscription_tier: state.premiumVariantIds.includes(v) ? 'premium' : null,
+                      is_rx_capable: !state.notRxCapableVariantIds.includes(v),
+                    },
+                    error: null,
+                  }),
             }),
           }),
         };
@@ -126,7 +131,7 @@ function stubSupabase() {
       }
       if (table === 'communications') {
         return {
-          select: () => ({ eq: () => ({ eq: () => Promise.resolve({ data: [], error: null }) }) }),
+          select: () => ({ eq: () => ({ eq: () => Promise.resolve({ data: state.priorFallbackComms, error: null }) }) }),
           insert: () => ({
             select: () => ({
               single: () => state.commsInsertShouldFail
@@ -149,6 +154,7 @@ function stubSupabase() {
       }
       if (fn === 'release_inventory_unit') {
         state.releaseCalls.push(args as { p_variant_id: number; p_redemption_id?: string; p_reason?: string });
+        if (state.releaseRejects) return Promise.reject(new Error('release rpc network error'));
         return Promise.resolve({ data: 'pool-1', error: null });
       }
       return Promise.resolve({ data: null, error: null });
@@ -177,9 +183,10 @@ beforeEach(() => {
       { id: 's2', slot_index: 1, status: 'available', membership_id: 'm1' },
       { id: 's3', slot_index: 2, status: 'available', membership_id: 'm1' },
     ],
-    premiumVariantIds: [], notRxCapableVariantIds: [], reserveFailsFor: [],
+    premiumVariantIds: [], notRxCapableVariantIds: [], metadataErrorFor: [],
+    reserveFailsFor: [], releaseRejects: false,
     selectError: null, claimError: null, revertFailFor: [], statusUpdateFailFor: [],
-    auditShouldFail: false, commsInsertShouldFail: false,
+    auditShouldFail: false, commsInsertShouldFail: false, priorFallbackComms: [],
     audits: [], slotUpdates: [], releaseCalls: [],
   };
   createRedemptionFulfillmentOrder.mockImplementation((r: { lens_config: { lens_type: string } }) =>
@@ -333,5 +340,44 @@ describe('autoRedeemConfiguredPairs', () => {
     const { autoRedeemConfiguredPairs } = await import('@/features/subscriptions/auto-redeem-pairs');
     await autoRedeemConfiguredPairs([RX_PAIR, PLANO_PAIR], CTX, stubSupabase() as never);
     expect(sendEmail).not.toHaveBeenCalled();
+  });
+
+  it('does not send a second pair_fallback email when a non-failed one already exists for this membership', async () => {
+    state.reserveFailsFor = [501];
+    state.priorFallbackComms = [{ metadata: { membership_id: 'm1' }, status: 'sent' }];
+    const { autoRedeemConfiguredPairs } = await import('@/features/subscriptions/auto-redeem-pairs');
+    const result = await autoRedeemConfiguredPairs([RX_PAIR, PLANO_PAIR], CTX, stubSupabase() as never);
+    expect(result).toEqual({ redeemed: 1, fallbacks: 1 });
+    expect(sendEmail).not.toHaveBeenCalled();
+  });
+
+  it('N1: a rejecting release RPC results in exactly one release attempt and does not throw out of the function', async () => {
+    state.releaseRejects = true;
+    createRedemptionFulfillmentOrder.mockRejectedValueOnce(new Error('boom'));
+    const { autoRedeemConfiguredPairs } = await import('@/features/subscriptions/auto-redeem-pairs');
+    const result = await autoRedeemConfiguredPairs([RX_PAIR], CTX, stubSupabase() as never);
+    expect(result).toEqual({ redeemed: 0, fallbacks: 1 });
+    expect(state.releaseCalls).toHaveLength(1);
+    expect(reason(state.audits[0])).toContain('boom');
+  });
+
+  it('N1: a rejecting release RPC on the rx_routing_mismatch guard also results in exactly one release attempt', async () => {
+    state.releaseRejects = true;
+    createRedemptionFulfillmentOrder.mockResolvedValueOnce({ orderId: 'ro-mismatch', lineItemId: 'rl-mismatch', hasRxItems: false });
+    const { autoRedeemConfiguredPairs } = await import('@/features/subscriptions/auto-redeem-pairs');
+    const result = await autoRedeemConfiguredPairs([RX_PAIR], CTX, stubSupabase() as never);
+    expect(result).toEqual({ redeemed: 0, fallbacks: 1 });
+    expect(state.releaseCalls).toHaveLength(1);
+  });
+
+  it('N2: a product_metadata query failure fails the pair with frame_metadata_unavailable, not a misleading frame_not_rx_capable', async () => {
+    state.metadataErrorFor = [501];
+    const { autoRedeemConfiguredPairs } = await import('@/features/subscriptions/auto-redeem-pairs');
+    const result = await autoRedeemConfiguredPairs([RX_PAIR], CTX, stubSupabase() as never);
+    expect(result).toEqual({ redeemed: 0, fallbacks: 1 });
+    expect(reason(state.audits[0])).toBe('frame_metadata_unavailable: metadata query timed out');
+    expect(createRedemptionFulfillmentOrder).not.toHaveBeenCalled();
+    // the slot was never touched — no claim, no revert
+    expect(state.slotUpdates).toHaveLength(0);
   });
 });
