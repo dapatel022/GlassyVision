@@ -221,6 +221,7 @@ export type Database = {
           lens_type: string | null;
           coatings: string | null;
           tint: string | null;
+          pair_configs: Json | null;
         };
         Insert: {
           id?: string;
@@ -244,6 +245,7 @@ export type Database = {
           lens_type?: string | null;
           coatings?: string | null;
           tint?: string | null;
+          pair_configs?: Json | null;
         };
         Update: {
           id?: string;
@@ -267,6 +269,7 @@ export type Database = {
           lens_type?: string | null;
           coatings?: string | null;
           tint?: string | null;
+          pair_configs?: Json | null;
         };
         Relationships: [
           { foreignKeyName: 'order_line_items_order_id_fkey'; columns: ['order_id']; referencedRelation: 'orders'; referencedColumns: ['id'] },
