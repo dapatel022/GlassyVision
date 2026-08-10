@@ -1,5 +1,5 @@
+import Link from 'next/link';
 import type { MembershipPricing } from '@/lib/commerce/membership-pricing';
-import MembershipCTA from './MembershipCTA';
 
 const TIER_LABELS: Record<string, string> = { solo: 'Solo', duo: 'Duo', trio: 'Trio' };
 
@@ -59,7 +59,14 @@ export default function MembershipTierTable({ pricing, canBuy }: { pricing: Memb
               ))}
             </ul>
 
-            {canBuy && <MembershipCTA tier={t} label={label} />}
+            {canBuy && (
+              <Link
+                href={`/membership/build?tier=${t.tier}`}
+                className="w-full px-4 py-3 bg-ink text-white font-sans font-bold text-xs uppercase tracking-widest hover:bg-accent transition-colors motion-reduce:transition-none text-center"
+              >
+                Choose {label}
+              </Link>
+            )}
           </div>
         );
       })}
