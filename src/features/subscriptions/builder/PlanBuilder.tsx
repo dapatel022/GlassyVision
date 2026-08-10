@@ -5,8 +5,10 @@ import type { BuilderData } from '@/features/subscriptions/lib/builder-data';
 import type { MembershipTierPrice } from '@/lib/commerce/membership-pricing';
 import type { PairConfig } from '@/features/subscriptions/lib/pair-config';
 import { BuilderProvider, useBuilder } from './BuilderContext';
-import type { Tier, TierPairsMap } from './builder-state';
+import { TIER_LABELS, type Tier, type TierPairsMap } from './builder-state';
 import PairConfigurator from './PairConfigurator';
+import BuilderReview from './BuilderReview';
+import BuilderStickyTotal from './BuilderStickyTotal';
 
 /**
  * Client shell for the plan-builder route. Carries no business logic of its
@@ -15,8 +17,6 @@ import PairConfigurator from './PairConfigurator';
  * builderReducer. Tasks 10 (pair configurator) and 11 (review/checkout)
  * fill in the marked placeholder slots.
  */
-
-const TIER_LABELS: Record<Tier, string> = { solo: 'Solo', duo: 'Duo', trio: 'Trio' };
 
 const STEPS: Array<{ key: 'plan' | 'pairs' | 'review'; label: string }> = [
   { key: 'plan', label: '01 PLAN' },
@@ -57,7 +57,12 @@ function PlanBuilderShell({ data, initialTier }: { data: BuilderData; initialTie
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated]);
 
-  const activeStep: 'plan' | 'pairs' | 'review' = state.tier === null ? 'plan' : 'pairs';
+  // The indicator can only distinguish plan vs pairs vs review by proxy —
+  // there's no separate "on the review step" piece of state. Simplest
+  // correct rule: review lights up once a tier is picked AND no pair is
+  // actively being configured (the configurator panel is closed).
+  const activeStep: 'plan' | 'pairs' | 'review' =
+    state.tier === null ? 'plan' : activePairIndex !== null ? 'pairs' : 'review';
 
   if (data.tiers === null) {
     return (
@@ -126,12 +131,11 @@ function PlanBuilderShell({ data, initialTier }: { data: BuilderData; initialTie
           <h2 className="font-mono text-xs font-bold uppercase tracking-widest text-muted-soft border-b border-line pb-2 mb-6">
             03 · Review
           </h2>
-          {/*
-            Task 11 slot: <BuilderReview/> renders here — plan summary,
-            per-pair recap, and checkout handoff. Left empty deliberately.
-          */}
+          <BuilderReview state={state} data={data} tier={state.tier} />
         </section>
       )}
+
+      {state.tier && <BuilderStickyTotal state={state} data={data} />}
     </div>
   );
 }

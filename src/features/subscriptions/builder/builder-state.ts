@@ -9,6 +9,9 @@ import type { PairConfig } from '@/features/subscriptions/lib/pair-config';
 
 export type Tier = 'solo' | 'duo' | 'trio';
 
+/** Shared display labels — PlanBuilder and BuilderReview both need the same tier wording. */
+export const TIER_LABELS: Record<Tier, string> = { solo: 'Solo', duo: 'Duo', trio: 'Trio' };
+
 export interface BuilderState {
   tier: Tier | null;
   pairs: Array<PairConfig | null>;
