@@ -286,6 +286,13 @@ export async function autoRedeemConfiguredPairs(
           frame_variant_id: config.v,
           lens_config: lensConfig,
           ship_to: ctx.shipTo,
+          // Carry the SAME billing-country fallback the destination gate above
+          // used to admit this pair — without this, a ship_to with no
+          // country_code (admitted only via billingCountry) would synthesize an
+          // order with a NULL billing_country, and every downstream gate
+          // (generate-work-order, generate-non-rx-work-order, create-shipment)
+          // would then fail closed on (no country_code, null).
+          billingCountry: ctx.billingCountry,
           membership: { customer_id: ctx.customerId, customer_email: ctx.customerEmail, currency: ctx.currency },
         },
         supabase,

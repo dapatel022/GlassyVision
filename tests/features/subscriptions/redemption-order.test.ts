@@ -133,6 +133,48 @@ describe('createRedemptionFulfillmentOrder', () => {
     expect(res).toEqual({ orderId: 'ord-r', lineItemId: 'li-r', hasRxItems: true });
   });
 
+  it('falls back to billingCountry for billing_country when ship_to carries no country_code', async () => {
+    const orderInsert = vi.fn(() => ({ select: () => ({ single: () => Promise.resolve({ data: { id: 'ord-fb' }, error: null }) }) }));
+    const liInsert = vi.fn(() => ({ select: () => ({ single: () => Promise.resolve({ data: { id: 'li-fb' }, error: null }) }) }));
+    from.mockImplementation((t: string) => {
+      if (t === 'product_metadata') return { select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: { sku: 'GV-1', frame_shape: 'round', is_rx_capable: true }, error: null }) }) }) };
+      if (t === 'orders') return { insert: orderInsert };
+      if (t === 'order_line_items') return { insert: liInsert };
+      return {};
+    });
+    const { createRedemptionFulfillmentOrder } = await import('@/features/subscriptions/redemption-order');
+    // ship_to is present (an object) but carries no country_code of its own —
+    // exactly the shape auto-redeem's destination gate admits via its
+    // billing-country fallback (isDispensableDestination(shipTo, billingCountry)).
+    const res = await createRedemptionFulfillmentOrder({
+      id: 'rfb', frame_variant_id: 222, lens_config: {}, ship_to: {}, billingCountry: 'us',
+      membership: { customer_id: 'c1', customer_email: 'a@b.com', currency: 'usd' },
+    } as never, { from } as never);
+    expect(res.orderId).toBe('ord-fb');
+    // The synthesized order MUST NOT drop the fallback destination signal that
+    // admitted this pair — a NULL billing_country here would strand a paid,
+    // stock-reserved redemption at every downstream isDispensableDestination
+    // gate (generate-work-order, generate-non-rx-work-order, create-shipment).
+    expect(orderInsert).toHaveBeenCalledWith(expect.objectContaining({ billing_country: 'us' }));
+  });
+
+  it('billing_country is null when neither ship_to.country_code nor billingCountry is present', async () => {
+    const orderInsert = vi.fn(() => ({ select: () => ({ single: () => Promise.resolve({ data: { id: 'ord-null' }, error: null }) }) }));
+    const liInsert = vi.fn(() => ({ select: () => ({ single: () => Promise.resolve({ data: { id: 'li-null' }, error: null }) }) }));
+    from.mockImplementation((t: string) => {
+      if (t === 'product_metadata') return { select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: { sku: 'GV-1', frame_shape: 'round', is_rx_capable: true }, error: null }) }) }) };
+      if (t === 'orders') return { insert: orderInsert };
+      if (t === 'order_line_items') return { insert: liInsert };
+      return {};
+    });
+    const { createRedemptionFulfillmentOrder } = await import('@/features/subscriptions/redemption-order');
+    await createRedemptionFulfillmentOrder({
+      id: 'rnull', frame_variant_id: 222, lens_config: {}, ship_to: {},
+      membership: { customer_id: 'c1', customer_email: 'a@b.com', currency: 'usd' },
+    } as never, { from } as never);
+    expect(orderInsert).toHaveBeenCalledWith(expect.objectContaining({ billing_country: null }));
+  });
+
   it('throws when the order insert fails', async () => {
     const orderInsert = vi.fn(() => ({ select: () => ({ single: () => Promise.resolve({ data: null, error: { message: 'boom' } }) }) }));
     from.mockImplementation((t: string) => {

@@ -253,10 +253,22 @@ describe('autoRedeemConfiguredPairs', () => {
     expect(createRedemptionFulfillmentOrder).not.toHaveBeenCalled();
   });
 
-  it('C1: a shipping address present with a US billing-country fallback (no country_code on the address itself) still redeems', async () => {
+  it('C1: a shipping address present with a US billing-country fallback (no country_code on the address itself) still redeems, and threads billingCountry into the synthesized order so downstream gates stay consistent', async () => {
     const { autoRedeemConfiguredPairs } = await import('@/features/subscriptions/auto-redeem-pairs');
     const result = await autoRedeemConfiguredPairs([PLANO_PAIR], { ...CTX, shipTo: {}, billingCountry: 'us' }, stubSupabase() as never);
     expect(result).toEqual({ redeemed: 1, fallbacks: 0 });
+    // The pair was admitted ONLY because the gate fell back to billingCountry
+    // (ship_to itself carries no country_code). createRedemptionFulfillmentOrder
+    // derives the synthesized order's own billing_country from ship_to.country_code
+    // with the SAME fallback (redemption-order.ts) — without threading it through
+    // here, the synthesized order would get a NULL billing_country and every
+    // downstream isDispensableDestination gate (generate-work-order,
+    // generate-non-rx-work-order, create-shipment) would then fail closed on
+    // (no country_code, null), stranding a paid, stock-reserved, redeemed slot.
+    expect(createRedemptionFulfillmentOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ ship_to: {}, billingCountry: 'us' }),
+      expect.anything(),
+    );
   });
 
   it('a throwing pair is audited, does not break the batch, and releases its reserved inventory before reverting (PII cleared)', async () => {

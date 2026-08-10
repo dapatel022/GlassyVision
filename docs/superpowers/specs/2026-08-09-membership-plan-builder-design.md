@@ -87,12 +87,15 @@ auto-redeem's destination gate then failed every pair closed 100% of the
 time. LENSUP-*/SURCH-* stay `requires_shipping: false` (charge carriers,
 never shippable on their own). Before/at launch:
 
-1. Re-run `scripts/setup-membership.js` — it now reconciles existing SUB-*
+1. Configure a free/zero-cost shipping rate in Shopify for the membership's
+   shipping zone(s) FIRST — before flipping `requires_shipping`. **Order
+   matters:** re-running `setup-membership.js` (step 2) before this rate
+   exists hard-blocks the address/shipping step on every membership
+   checkout — including the zero-config purchase that works in production
+   today — for the window between the two steps.
+2. Re-run `scripts/setup-membership.js` — it now reconciles existing SUB-*
    variants to `requires_shipping: true` (a correctness flag, never a price)
    in addition to its normal create-if-missing behavior.
-2. Configure a free/zero-cost shipping rate in Shopify for the membership's
-   shipping zone(s) so the now-mandatory address step never adds a shipping
-   cost to a membership checkout.
 3. Re-run the Task 13 Step 4.5 E2E check (Bogus Gateway) and confirm
    `orders/paid` carries a real `shipping_address` and configured pairs land
    in `awaiting_rx`/`awaiting_fulfillment` rather than falling back.

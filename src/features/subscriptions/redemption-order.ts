@@ -16,6 +16,23 @@ interface RedemptionInput {
   frame_variant_id: number | null;
   lens_config: Record<string, unknown> | null;
   ship_to: ShipTo | null;
+  /**
+   * Fallback destination signal for the synthesized order's `billing_country`
+   * when `ship_to` itself carries no `country_code` — e.g. auto-redeem's
+   * billing-country fallback (see `AutoRedeemContext.billingCountry` /
+   * `isDispensableDestination`). Without threading this through, a pair
+   * admitted by that fallback would synthesize an order with a NULL
+   * `billing_country`, and every downstream gate
+   * (`generate-work-order.ts`, `generate-non-rx-work-order.ts`,
+   * `create-shipment.ts`) re-checks `isDispensableDestination(shipping_address,
+   * billing_country)` against `(no country_code, null)` and fails closed —
+   * stranding a paid, stock-reserved, redeemed slot with no path to a work
+   * order or shipment. `startRedemption` and `confirmAddonPayment` never pass
+   * this: their `ship_to` is guaranteed to carry a `country_code` by their own
+   * front-door gate (`isDispensableDestination(shipTo, null)`), so the
+   * fallback is inert for those callers.
+   */
+  billingCountry?: string | null;
   membership: MembershipInfo;
 }
 
@@ -27,9 +44,14 @@ interface RedemptionInput {
  * Shopify fulfillment push already skips (guarded on a truthy line-item id).
  *
  * Destination compliance: `billing_country` is derived from the redemption's
- * `ship_to.country_code` (lowercased). The DB CHECK only permits `us`/`ca`;
- * the destination market gate in `startRedemption` (Task 4) rejects non-US/CA
- * ship-to BEFORE this runs, so US/CA is assumed here — but we still lowercase.
+ * `ship_to.country_code` (lowercased), falling back to `redemption.billingCountry`
+ * when the ship-to address carries no country_code of its own — mirroring
+ * `isDispensableDestination`'s own fallback exactly, so the synthesized order
+ * never loses the destination signal that admitted it in the first place. The
+ * DB CHECK only permits `us`/`ca`; the destination market gate (in
+ * `startRedemption` / `autoRedeemConfiguredPairs`) rejects non-US/CA
+ * destinations BEFORE this runs, so US/CA is assumed here — but we still
+ * lowercase.
  */
 export async function createRedemptionFulfillmentOrder(
   redemption: RedemptionInput,
@@ -65,7 +87,8 @@ export async function createRedemptionFulfillmentOrder(
   const rawTint = (lensConfig as Record<string, unknown>).tint;
   const lineTint = typeof rawTint === 'string' && rawTint.length > 0 ? rawTint : null;
 
-  const countryCode = (redemption.ship_to?.country_code ?? '').toLowerCase() || null;
+  const shipCountryCode = redemption.ship_to?.country_code?.trim();
+  const countryCode = (shipCountryCode || redemption.billingCountry || '').toLowerCase() || null;
 
   // 2. Synthesized order (no Shopify ids).
   const { data: order, error: orderErr } = await supabase
