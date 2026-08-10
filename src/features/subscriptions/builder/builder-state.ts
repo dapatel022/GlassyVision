@@ -82,3 +82,18 @@ export function reconcileHydratedState(stored: BuilderState | null, tierPairs: T
   }
   return { tier: stored.tier, pairs };
 }
+
+/**
+ * Whether it's safe to persist the post-hydration state back to
+ * localStorage. False whenever `tierPairs` itself is unavailable (a
+ * transient pricing outage on this page load) — reconcileHydratedState
+ * still returns something for THIS session (INITIAL_BUILDER_STATE, fail
+ * closed), but that's a placeholder, not a verdict on the user's actual
+ * stored plan. Persisting it would permanently overwrite a real saved plan
+ * with an artifact of the outage. `tierPairs` being merely incomplete (a
+ * known set of live tiers that just doesn't include the stored tier) is a
+ * genuine reconciliation, not an outage, so persistence stays allowed then.
+ */
+export function canPersistAfterHydration(tierPairs: TierPairsMap | undefined): boolean {
+  return tierPairs !== undefined;
+}

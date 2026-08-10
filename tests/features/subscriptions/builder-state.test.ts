@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   builderReducer,
   reconcileHydratedState,
+  canPersistAfterHydration,
   INITIAL_BUILDER_STATE,
   type BuilderState,
   type TierPairsMap,
@@ -80,5 +81,43 @@ describe('reconcileHydratedState', () => {
   it('falls back to the initial state when no live tiers are known at all', () => {
     const stored: BuilderState = { tier: 'solo', pairs: [CFG_1] };
     expect(reconcileHydratedState(stored, undefined)).toEqual(INITIAL_BUILDER_STATE);
+  });
+});
+
+describe('canPersistAfterHydration', () => {
+  const LIVE_TIER_PAIRS: TierPairsMap = { solo: 1, duo: 2, trio: 3 };
+
+  it('is false when tierPairs is undefined — a transient pricing outage must not overwrite a stored plan', () => {
+    expect(canPersistAfterHydration(undefined)).toBe(false);
+  });
+
+  it('is true whenever tierPairs was actually fetched, even if empty or missing the stored tier', () => {
+    expect(canPersistAfterHydration(LIVE_TIER_PAIRS)).toBe(true);
+    expect(canPersistAfterHydration({})).toBe(true);
+    expect(canPersistAfterHydration({ solo: 1 })).toBe(true); // duo/trio absent is a real, live table
+  });
+});
+
+describe('hydration survives a transient pricing outage (N1 regression)', () => {
+  const LIVE_TIER_PAIRS: TierPairsMap = { solo: 1, duo: 2, trio: 3 };
+  const REAL_STORED_PLAN: BuilderState = { tier: 'trio', pairs: [CFG_1, CFG_2, null] };
+
+  it('(a) a load with tierPairs unavailable reconciles to the initial state AND is marked non-persistable, so the real stored plan is never overwritten', () => {
+    // Simulates BuilderContext's hydration effect on a load where the
+    // pricing fetch failed (tierPairs undefined): the in-session view is
+    // fail-closed empty, but canPersist must independently say "don't
+    // write" so the write effect skips entirely and REAL_STORED_PLAN in
+    // localStorage is left byte-for-byte untouched.
+    const sessionView = reconcileHydratedState(REAL_STORED_PLAN, undefined);
+    expect(sessionView).toEqual(INITIAL_BUILDER_STATE);
+    expect(canPersistAfterHydration(undefined)).toBe(false);
+  });
+
+  it('(b) a later load with pricing restored reconciles the SAME untouched stored plan intact, and is marked persistable again', () => {
+    // Because (a) never wrote anything, the "stored" value here is exactly
+    // what a real localStorage entry would still contain on the next load.
+    const sessionView = reconcileHydratedState(REAL_STORED_PLAN, LIVE_TIER_PAIRS);
+    expect(sessionView).toEqual(REAL_STORED_PLAN);
+    expect(canPersistAfterHydration(LIVE_TIER_PAIRS)).toBe(true);
   });
 });

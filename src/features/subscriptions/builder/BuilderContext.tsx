@@ -5,6 +5,7 @@ import {
   builderReducer,
   INITIAL_BUILDER_STATE,
   reconcileHydratedState,
+  canPersistAfterHydration,
   type BuilderState,
   type Tier,
   type TierPairsMap,
@@ -75,6 +76,12 @@ function parseStoredBuilderState(raw: string): BuilderState | null {
 export function BuilderProvider({ children, tierPairs }: { children: React.ReactNode; tierPairs?: TierPairsMap }) {
   const [state, dispatch] = useReducer(builderReducer, INITIAL_BUILDER_STATE);
   const [hydrated, setHydrated] = useState(false);
+  // Gates the persistence effect below. False when this mount hydrated
+  // without live tier data (tierPairs undefined — a transient pricing
+  // outage): the in-session state is fail-closed to INITIAL_BUILDER_STATE
+  // for THIS load, but that must never be written back over a real stored
+  // plan. See canPersistAfterHydration.
+  const [canPersist, setCanPersist] = useState(false);
 
   // One-time hydration from localStorage on mount. Guarded for SSR (no
   // `window`/`localStorage` on the server) and never throws on malformed
@@ -102,18 +109,23 @@ export function BuilderProvider({ children, tierPairs }: { children: React.React
     } catch {
       // malformed stored JSON — start fresh
     }
+    setCanPersist(canPersistAfterHydration(tierPairs));
     setHydrated(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    if (!hydrated) return;
+    // canPersist === false means this load hydrated without live tier data
+    // (pricing fetch failed) — skip the write entirely so a real stored
+    // plan survives untouched. The next page load, once pricing returns,
+    // will reconcile normally against the untouched localStorage entry.
+    if (!hydrated || !canPersist) return;
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch {
       // storage full / disabled — ignore
     }
-  }, [state, hydrated]);
+  }, [state, hydrated, canPersist]);
 
   const setTier = useCallback((tier: Tier, pairs: number) => {
     dispatch({ type: 'setTier', tier, pairs });
