@@ -76,7 +76,15 @@ function PlanBuilderShell({ data, initialTier }: { data: BuilderData; initialTie
   }
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-12 space-y-10">
+    <div
+      className={`max-w-5xl mx-auto px-4 sm:px-6 pt-12 space-y-10 ${
+        // BuilderStickyTotal (~65.5px tall, md:hidden) renders whenever a
+        // tier is picked — reserve enough bottom padding on mobile for the
+        // review step's checkout button to scroll fully clear of it.
+        // Desktop never shows the bar, so it keeps the normal py-12 rhythm.
+        state.tier ? 'pb-24 md:pb-12' : 'pb-12'
+      }`}
+    >
       <StepIndicator activeStep={activeStep} />
 
       <section aria-label="Choose your plan">
