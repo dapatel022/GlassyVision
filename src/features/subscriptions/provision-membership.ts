@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Json } from '@/lib/supabase/types';
 import { sendEmail } from '@/lib/email/resend';
 import { renderMembershipWelcome } from '@/lib/email/templates/membership-welcome';
 import { renderSlotUnlocked } from '@/lib/email/templates/slot-unlocked';
@@ -12,11 +13,28 @@ interface OrderRow {
   customer_email?: string | null;
   currency?: string | null;
   financial_status: string;
-  shipping_address?: Record<string, unknown> | null;
+  // Raw jsonb as read off the `orders` row (Shopify's shipping_address REST
+  // payload, verbatim). Narrowed to a plain object — or null — right before
+  // it is handed to auto-redeem; never trust the DB shape blindly.
+  shipping_address?: Json;
 }
 
 interface RedemptionPolicy {
   mode?: string;
+}
+
+/**
+ * Narrow raw `orders.shipping_address` jsonb to the plain-object shape
+ * `isDispensableDestination` (and the rest of the auto-redeem path) expects.
+ * Anything else — a bare string/number/bool, an array, or null/undefined —
+ * becomes `null`, which fails the destination gate closed rather than ever
+ * handing a non-object value into auto-redeem.
+ */
+function asShipToRecord(value: Json | null | undefined): Record<string, unknown> | null {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return null;
 }
 
 /**
@@ -188,7 +206,7 @@ export async function provisionMembershipFromOrder(
             customerId: order.customer_id,
             customerEmail: order.customer_email ?? null,
             currency: membershipCurrency,
-            shipTo: order.shipping_address ?? null,
+            shipTo: asShipToRecord(order.shipping_address),
           },
           supabase,
         );

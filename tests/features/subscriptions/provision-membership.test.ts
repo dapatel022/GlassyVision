@@ -283,7 +283,7 @@ describe('provisionMembershipFromOrder', () => {
       expect.objectContaining({ membershipId: 'mem-1', orderId: 'o1', shipTo }),
       supabase,
     );
-    const commTypes = commsInsert.mock.calls.map((c) => (c[0] as { type: string }).type);
+    const commTypes = (commsInsert.mock.calls as unknown as unknown[][]).map((c) => (c[0] as { type: string }).type);
     expect(commTypes).toContain('membership_welcome');
     expect(commTypes).not.toContain('slot_unlocked');
   });
@@ -302,7 +302,7 @@ describe('provisionMembershipFromOrder', () => {
       expect.objectContaining({ membershipId: 'mem-1', orderId: 'o1', shipTo }),
       supabase,
     );
-    const commTypes = commsInsert.mock.calls.map((c) => (c[0] as { type: string }).type);
+    const commTypes = (commsInsert.mock.calls as unknown as unknown[][]).map((c) => (c[0] as { type: string }).type);
     expect(commTypes).toContain('slot_unlocked');
   });
 
@@ -318,6 +318,25 @@ describe('provisionMembershipFromOrder', () => {
     expect(autoRedeemConfiguredPairs).toHaveBeenCalledWith(
       pairConfigs,
       expect.objectContaining({ currency: 'cad' }),
+      supabase,
+    );
+  });
+
+  it('narrows a non-object shipping_address (e.g. a malformed string) to shipTo: null instead of passing it through', async () => {
+    const pairConfigs = [{ v: 100, h: 'aviator-a', l: 'non_rx', u: [], t: 'none' }];
+    autoRedeemConfiguredPairs.mockResolvedValueOnce({ redeemed: 0, fallbacks: 1 });
+    happyMocksWithLineItem({ variant_id: 222, product_id: 111, sku: 'SUB-3PAIR', pair_configs: pairConfigs });
+    const { provisionMembershipFromOrder } = await import('@/features/subscriptions/provision-membership');
+    // Raw jsonb can in principle hold any Json value — a bare string here
+    // simulates a malformed/legacy row. It must never reach auto-redeem's
+    // ctx.shipTo as anything but null (never a string), since
+    // isDispensableDestination expects a plain object with country_code.
+    const order = { id: 'o1', shopify_order_id: 555, customer_id: 'c1', customer_email: 'a@b.com', currency: 'usd', financial_status: 'paid', shipping_address: 'not-an-object' };
+    const res = await provisionMembershipFromOrder(order as never, supabase as never);
+    expect(res.provisioned).toBe(true);
+    expect(autoRedeemConfiguredPairs).toHaveBeenCalledWith(
+      pairConfigs,
+      expect.objectContaining({ shipTo: null }),
       supabase,
     );
   });
@@ -339,7 +358,7 @@ describe('provisionMembershipFromOrder', () => {
     const order = { id: 'o1', shopify_order_id: 555, customer_id: 'c1', customer_email: 'a@b.com', currency: 'usd', financial_status: 'paid', shipping_address: { country_code: 'US' } };
     const res = await provisionMembershipFromOrder(order as never, supabase as never);
     expect(res.provisioned).toBe(true);
-    const commTypes = commsInsert.mock.calls.map((c) => (c[0] as { type: string }).type);
+    const commTypes = (commsInsert.mock.calls as unknown as unknown[][]).map((c) => (c[0] as { type: string }).type);
     expect(commTypes).toContain('slot_unlocked');
   });
 
@@ -355,7 +374,7 @@ describe('provisionMembershipFromOrder', () => {
     expect(membershipInsert).toHaveBeenCalledTimes(1);
     const slotCalls = slotInsert.mock.calls as unknown as unknown[][];
     expect(slotCalls[0][0]).toHaveLength(3);
-    const commTypes = commsInsert.mock.calls.map((c) => (c[0] as { type: string }).type);
+    const commTypes = (commsInsert.mock.calls as unknown as unknown[][]).map((c) => (c[0] as { type: string }).type);
     expect(commTypes).toContain('membership_welcome');
     // openSlots defaults to pairs_count (3) when auto-redeem throws, so
     // slot_unlocked still goes out too.
