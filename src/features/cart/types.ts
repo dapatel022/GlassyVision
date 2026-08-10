@@ -1,3 +1,5 @@
+import type { PairConfig } from '@/features/subscriptions/lib/pair-config';
+
 export type LensType = 'non_rx' | 'single_vision' | 'progressive';
 
 export interface LensConfig {
@@ -15,4 +17,6 @@ export interface CartLine {
   unitPrice: number;
   quantity: number;
   lensConfig: LensConfig;
+  /** Purchase-time membership pair configurations (membership lines only). */
+  pairConfigs?: PairConfig[];
 }

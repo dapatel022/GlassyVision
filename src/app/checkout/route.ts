@@ -3,6 +3,10 @@ import { randomUUID } from 'crypto';
 import { createCart } from '@/lib/commerce/shopify';
 import { lensRequiresRx, selectedOptionIds } from '@/features/shop/lens-options';
 import { getLensUpgradePricing } from '@/lib/commerce/lens-pricing';
+import { getFrameSurchargePricing } from '@/lib/commerce/frame-surcharge-pricing';
+import { getMembershipPricing } from '@/lib/commerce/membership-pricing';
+import { validatePairConfigs, encodePairAttributes, chargeableOptionIds } from '@/features/subscriptions/lib/pair-config';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { createRateLimiter, clientIpFrom } from '@/lib/security/rate-limit';
 import type { CartLine } from '@/features/cart/types';
 
@@ -64,6 +68,68 @@ export async function POST(request: NextRequest) {
           { key: 'is_rx_required', value: 'false' },
         ],
       });
+    }
+
+    if (l.pairConfigs !== undefined) {
+      if (l.productHandle !== 'membership') {
+        return NextResponse.json({ error: 'Pair configurations are only valid on a membership line' }, { status: 409 });
+      }
+      const tiers = await getMembershipPricing();
+      const tier = tiers?.find((t) => t.variantId === l.variantId);
+      if (!tier) {
+        console.error('[checkout] membership tier unresolvable — blocking configured purchase', { variantId: l.variantId });
+        return NextResponse.json({ error: 'Membership pricing is unavailable — please try again shortly' }, { status: 409 });
+      }
+      const validated = validatePairConfigs(l.pairConfigs, tier.pairs);
+      if (!validated.ok) {
+        return NextResponse.json({ error: validated.error }, { status: 409 });
+      }
+      const configs = validated.configs;
+
+      // Premium lookup: which chosen frames carry the surcharge.
+      const supabase = createAdminClient();
+      const { data: premiumRows } = await supabase
+        .from('product_metadata')
+        .select('shopify_variant_id, subscription_tier')
+        .in('shopify_variant_id', configs.map((c) => c.v));
+      const premiumSet = new Set(
+        ((premiumRows ?? []) as Array<{ shopify_variant_id: number; subscription_tier: string | null }>)
+          .filter((r) => r.subscription_tier === 'premium')
+          .map((r) => r.shopify_variant_id),
+      );
+      const surcharge = premiumSet.size > 0 ? await getFrameSurchargePricing() : null;
+      if (premiumSet.size > 0 && !surcharge) {
+        console.error('[checkout] premium surcharge pricing unavailable — blocking configured purchase');
+        return NextResponse.json({ error: 'Premium frame pricing is unavailable — please try again shortly' }, { status: 409 });
+      }
+
+      // Mint _pair_N attributes onto the membership line just pushed.
+      const membershipCartLine = cartLines[cartLines.length - 1];
+      membershipCartLine.attributes.push(...encodePairAttributes(configs));
+
+      // Charge lines: LENSUP per chargeable option, SURCH per premium pair.
+      const pairPricing = await getLensUpgradePricing();
+      for (const config of configs) {
+        for (const optionId of chargeableOptionIds(config)) {
+          const upgrade = pairPricing?.[optionId];
+          if (!upgrade) {
+            console.error('[checkout] unresolvable pair upgrade — blocking checkout', { optionId });
+            return NextResponse.json({ error: 'Lens upgrade pricing is unavailable — please try again shortly' }, { status: 409 });
+          }
+          cartLines.push({
+            merchandiseId: upgrade.variantId,
+            quantity: 1,
+            attributes: [{ key: '_addon_for', value: lineRef }, { key: 'is_rx_required', value: 'false' }],
+          });
+        }
+        if (premiumSet.has(config.v)) {
+          cartLines.push({
+            merchandiseId: surcharge!.variantId,
+            quantity: 1,
+            attributes: [{ key: '_addon_for', value: lineRef }, { key: 'is_rx_required', value: 'false' }],
+          });
+        }
+      }
     }
   }
 
